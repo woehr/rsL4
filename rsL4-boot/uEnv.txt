@@ -1,0 +1,3 @@
+console=ttyO0,115200n8
+uenvcmd=load mmc 0:1 0x402F0400 rsL4-boot.bin; go 0x402F0400;
+

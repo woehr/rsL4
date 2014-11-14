@@ -3,20 +3,16 @@
 #![feature(lang_items)]
 
 extern crate core;
-extern {
-  static STACK_LIMIT: u32;
-  static bss_start  : u32;
-  static bss_end    : u32;
-}
 
-// The assumption here is that the processor's ROM code has already set up a suitable stack as
-// in section 26.1.3.2 of the technical reference manual. We prevent a stack check from happening
-// since that will not have been configured yet.
 #[no_mangle]
 #[allow(dead_code)]
-#[no_stack_check]
-pub extern fn start() {
-  // Set stack limit
+pub extern fn main() -> ! {
+  let thr: * mut u8 = 0x44E09000 as * mut u8;
+  loop {
+    unsafe {
+      *thr = 'a' as u8;
+    }
+  }
 }
 
 // stack_exhausted won't ever be called since we implement our own __morestack. Even so, the
@@ -25,7 +21,7 @@ pub extern fn start() {
 
 #[lang = "eh_personality"]  extern fn eh_personality() {}
 
-// This function will only be called if a call to panic! is made. This shouldn't happen.
+// This function will only be called if a call to panic! is made.
 #[lang = "panic_fmt"]              fn panic_fmt() -> ! { loop {} }
 
 // LLVM checks every function entry to make sure enough stack is allocated, if it isn't this
@@ -35,7 +31,14 @@ pub extern fn start() {
 // calling __morestack from running out of stack while executing __morestack.
 #[no_mangle]
 #[no_stack_check]
-extern fn __morestack() {}
+extern fn __morestack() {
+  let thr: * mut u8 = 0x44E09000 as * mut u8;
+  loop {
+    unsafe {
+      *thr = 'm' as u8;
+    }
+  }
+}
 
 // These functions are expected by something for stack unwinding.
 #[no_mangle]
