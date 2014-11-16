@@ -1,5 +1,6 @@
+#![crate_name = "rsL4-boot"]
+#![crate_type = "rlib"]
 #![no_std]
-#![no_main]
 #![feature(lang_items)]
 
 extern crate core;

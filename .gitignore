@@ -1,5 +1,6 @@
 rust-src
-obj
-lib
-bin
+_build
+_shake
+.cabal-sandbox
+cabal.sandbox.config
 

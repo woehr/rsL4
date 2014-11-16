@@ -16,7 +16,7 @@ SECTIONS
   . = IMAGE_START;
   .text : {
     /* The entry point has to be where execution starts */
-    obj/main.o (.text.start);
+    _build/rsL4-boot-start.o (.text.start);
 
     *(.text);
   }
