@@ -15,7 +15,7 @@ if [ ! -f ".cabal-sandbox/bin/shake" ]; then
 fi
 
 if [ ! -d "rust-src" ]; then
-  git clone git@github.com:rust-lang/rust.git rust-src;
+  git clone https://github.com/rust-lang/rust.git rust-src;
 fi
 
 cd rust-src

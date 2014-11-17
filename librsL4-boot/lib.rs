@@ -4,16 +4,28 @@
 #![feature(lang_items)]
 
 extern crate core;
+use core::intrinsics::{volatile_load, volatile_store};
+
+// When setting up the stack we make sure there is always room to call putc for debuggin purposes.
+#[no_stack_check]
+fn putc(c: char) {
+  let thr: * mut u8 = 0x44E09000 as * mut u8;
+  let sta: * const u8 = (0x44E09014) as * const u8;
+  unsafe {
+    while volatile_load(sta) & 0x20 == 0 {}
+    volatile_store(thr, c as u8);
+  }
+}
+
+fn recurse() {
+  putc('a');
+  recurse();
+}
 
 #[no_mangle]
 #[allow(dead_code)]
-pub extern fn main() -> ! {
-  let thr: * mut u8 = 0x44E09000 as * mut u8;
-  loop {
-    unsafe {
-      *thr = 'a' as u8;
-    }
-  }
+pub extern fn main() {
+  recurse();
 }
 
 // stack_exhausted won't ever be called since we implement our own __morestack. Even so, the
@@ -33,12 +45,8 @@ pub extern fn main() -> ! {
 #[no_mangle]
 #[no_stack_check]
 extern fn __morestack() {
-  let thr: * mut u8 = 0x44E09000 as * mut u8;
-  loop {
-    unsafe {
-      *thr = 'm' as u8;
-    }
-  }
+  putc('m');
+  loop {}
 }
 
 // These functions are expected by something for stack unwinding.

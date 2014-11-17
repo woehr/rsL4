@@ -13,7 +13,7 @@ compileOpts :: Action [String]
 compileOpts = do
   tar <- getEnvOrFail "TARGET"
   pro <- getEnvOrFail "PROCESSOR"
-  return ["--target", tar, "-C", ("target-cpu=" ++ pro)]
+  return ["--target", tar, "-C", ("target-cpu=" ++ pro), "--emit", "ir,asm,link"]
 
 -- Takes a directory containing a rust lib and a list of rust dependencies and builds the lib in
 -- dir.
