@@ -6,7 +6,9 @@ IMAGE_START = 0x402F0400;
 STACK_START = 0x4030CE00;
 
 STACK_END   = STACK_START - STACK_SIZE;
-STACK_LIMIT = STACK_END + 16;
+/* Be generous with extra stack at the end so we don't accidentally overflow the actual stack
+ * when producing stack overflow debug output. */
+STACK_LIMIT = STACK_END + 1024;
 
 IMAGE_END   = STACK_END;
 IMAGE_MAX   = IMAGE_END - IMAGE_START;
@@ -24,6 +26,10 @@ SECTIONS
   .data : {
     *(.data);
     . = ALIGN(4);
+    p_tcb = .;
+    LONG(0);
+    p_sl = .;
+    LONG(0);
   }
 
   .bss : {
