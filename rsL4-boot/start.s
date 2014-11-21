@@ -24,12 +24,12 @@ start:
 # Setup our stack
 	ldr sp, =STACK_START
 # Set the stack limit
-	ldr r0, =STACK_LIMIT
-	ldr r1, =p_sl
-	str r0, [r1]
+	ldr r2, =STACK_LIMIT
+	ldr r3, =p_sl
+	str r2, [r3]
 # Set the TCB to the 8 bytes set aside in the linker script
-	ldr r0, =p_tcb
-	mcr p15, #0, r0, c13, c0, #3
+	ldr r2, =p_tcb
+	mcr p15, #0, r2, c13, c0, #3
 # Branch to the Rust entry point
 	bl main
 # Should never get here
