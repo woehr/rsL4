@@ -1,9 +1,14 @@
 #!/bin/sh
 
+# Environment variables used to compile rust code
+# Note that seL4 compilation options are defined in its .config
 export RUSTC_BRANCH="master"
 export TOOLCHAIN="arm-none-eabi-"
 export TARGET="arm-unknown-linux-gnueabi"
 export PROCESSOR="cortex-a8"
+
+# Used for compiling the seL4 kernel
+export PYTHON_EXE="python2.7"
 
 if [ ! -d ".cabal-sandbox" ]; then
   cabal sandbox init;
