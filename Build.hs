@@ -24,8 +24,7 @@ compileOpts = do
   pro <- getEnvOrFail "PROCESSOR"
   return ["--target", tar, "-C", ("target-cpu=" ++ pro), "--emit", "ir,asm,link"]
 
--- Takes a directory containing a rust lib and a list of rust dependencies and builds the lib in
--- dir.
+-- Takes a directory containing a rust lib and a list of rust dependencies and builds the lib
 compileRlib :: String -> [String] -> Action ()
 compileRlib dir deps = do
   co <- compileOpts
@@ -36,12 +35,26 @@ compileRlib dir deps = do
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
---  want [buildOut </> "rsL4-boot.bin"]
-  want [buildOut </> "kernel.elf"]
+  want [buildOut </> "rsL4-boot.bin"]
 
   phony "clean" $ do
     putNormal "Cleaning files in _build"
     removeFilesAfter "_build" ["//*"]
+
+  buildOut </> "rsL4-boot.bin" *> \out -> do
+    tc <- getEnvOrFail "TOOLCHAIN"
+    need
+      [ buildDir </> "kernel.elf"
+      , buildDir </> "gen_boot_image.sh"
+      , buildDir </> "archive.bin.lsd"
+      , buildDir </> "linker.lds"
+      , buildDir </> "elfloader.o"
+
+      , buildDir </> "rsL4-init.elf"
+      ]
+    let genImageOutput = out -<.> "elf"
+    () <- cmd (buildDir </> "gen_boot_image.sh") (buildDir </> "kernel.elf") (buildDir </> "rsL4-init.elf") genImageOut
+    cmd (tc ++ "objcopy") "-O" "binary" genImageOut out
 
   buildOut </> "kernel.elf" *> \out -> do
     need [pyOut </> "bin/activate", buildOut </> "repo"]
@@ -57,31 +70,12 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
   buildOut </> "repo" *> \out -> do
     cmd "curl" "https://storage.googleapis.com/git-repo-downloads/repo" "-o" out
 
-  buildOut </> "rsL4-boot.bin" *> \out -> do
-    let inp = out -<.> "elf"
-    need [inp]
-    tc <- getEnvOrFail "TOOLCHAIN"
-    cmd (tc ++ "objcopy") "-O" "binary" inp out
-
-  buildOut </> "rsL4-boot.elf" *> \out -> do
-    let linkScript = "rsL4-boot/am335x.ld"
-    let linkObjs   =
-          [ buildOut </> "rsL4-boot-start.o"
-          , buildOut </> "librsL4-boot.rlib"
-          , buildOut </> "libcore.rlib"
-          ]
-    need $ linkObjs ++ [linkScript]
-    tc <- getEnvOrFail "TOOLCHAIN"
-    cmd (tc ++ "ld") "-T" linkScript "-o" out linkObjs
-
-  buildOut </> "rsL4-boot-start.o" *> \out -> do
-    let inp = "rsL4-boot/start.s"
-    need [inp]
-    tc <- getEnvOrFail "TOOLCHAIN"
-    cmd (tc ++ "as") "-o" out inp
-
-  buildOut </> "librsL4-boot.rlib" *> \_ -> do
-    compileRlib "librsL4-boot" ["libcore.rlib"]
+  buildOut </> "rsL4-init.elf" *> \out -> do
+    initFiles <- getDirectoryFiles "rsL4-init" ["//*"]
+    need
+      [ buildOut </> "libcore.rlib"
+      ] ++ initFiles
+    cmd "rustc" "rsL4-init/src/main.rs"
 
   buildOut </> "libcore.rlib" *> \_ -> do
     compileRlib "rust-src/src/libcore" []

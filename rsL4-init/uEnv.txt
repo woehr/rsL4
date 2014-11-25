@@ -1,0 +1,5 @@
+console=ttyO0,115200n8
+boot_loc=0x82000000
+boot_fn=rsL4-init.bin
+uenvcmd=load mmc $bootpart $boot_loc $boot_fn; go $boot_loc;
+
