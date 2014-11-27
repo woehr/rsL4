@@ -1,20 +1,16 @@
-#![crate_name = "rsL4-boot"]
-#![crate_type = "rlib"]
+#![crate_name = "rsL4-init"]
+#![crate_type = "bin"]
 #![no_std]
 #![feature(lang_items, phase)]
 
 #[phase(plugin, link)]
 extern crate core;
 
+/*
 use core::prelude;
 use core::fmt;
 use core::intrinsics::{volatile_load, volatile_store};
 use core::result::{Ok};
-
-#[allow(dead_code)]
-extern {
-  fn increase_stack();
-}
 
 struct Uart {
   thr: * mut u8,
@@ -33,7 +29,8 @@ impl fmt::FormatWriter for Uart {
   }
 }
 
-static uart0: Uart = Uart {thr: 0x44E09000 as * mut u8, sta: 0x44E09014 as * const u8};
+static mut uart0: Uart = Uart {thr: 0x44E09000 as * mut u8, sta: 0x44E09014 as * const u8};
+*/
 
 /*
 fn put_c(c: u8) {
@@ -59,12 +56,14 @@ fn recurse(call_count: u32) {
 
 
 
-#[no_mangle]
-#[allow(dead_code)]
-pub extern fn main(argc: u32, argv: * const * const u8) {
-  format_args!(|args| { write!(uart0, "{}", args) }, "There were {} args.\n", argc as u8);
-//  write!(uart0, "There were {} args.\n", argc as u8);
-  recurse(0);
+//#[no_mangle]
+//#[allow(dead_code)]
+//pub extern fn main(argc: u32, argv: * const * const u8) -> ! {
+#[start]
+pub fn main(argc: int, argv: *const *const u8) -> int {
+  loop {}
+//  write!(&mut uart0, "There were {} args.\n", argc as u8);
+//  recurse(0);
 }
 
 // stack_exhausted won't ever be called since we implement our own __morestack. Even so, the
@@ -76,23 +75,6 @@ pub extern fn main(argc: u32, argv: * const * const u8) {
 // This function will only be called if a call to panic! is made.
 #[lang = "panic_fmt"]              fn panic_fmt() -> ! {
 //  put_str("panic_fmt called");
-  loop {}
-}
-
-// LLVM checks every function entry to make sure enough stack is allocated, if it isn't this
-// function is called. This is normally used in a split stack situation to allocate more stack
-// but Rust uses a call to this function to determine when the stack overflows (Rust uses a large
-// stack instead of a split-stack). We also disable stack checking on __morestack so we don't try
-// calling __morestack from running out of stack while executing __morestack.
-#[no_mangle]
-#[no_stack_check]
-fn __morestack() {
-  // Increase the stack limit so we can safely call into stack allocating functions. This does not
-  // overflow the stack since space was left at the end of the stack for this purpose.
-  unsafe {
-    increase_stack();
-  }
-//  put_str("Stack overflow");
   loop {}
 }
 

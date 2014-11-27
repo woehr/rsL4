@@ -3,6 +3,8 @@ import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
 
+data CrateType = Bin | Rlib
+
 buildOut :: String
 buildOut = "_build/outputs"
 
@@ -21,21 +23,38 @@ getEnvOrFail var = getEnv var >>= \mVal ->
 compileOpts :: Action [String]
 compileOpts = do
   tar <- getEnvOrFail "TARGET"
-  pro <- getEnvOrFail "PROCESSOR"
-  return ["--target", tar, "-C", ("target-cpu=" ++ pro), "--emit", "ir,asm,link"]
+  cpu <- getEnvOrFail "PROCESSOR"
+  tc  <- getEnvOrFail "TOOLCHAIN"
+  return
+    [ "--target",   tar
+    , "-C",         ("target-cpu=" ++ cpu)
+    , "-C",         ("ar=" ++ tc ++ "ar")
+    -- Linker is gcc because linker options are passed as -Wl,opt which ld doesn't recognize
+    , "-C",         ("linker=" ++ tc ++ "gcc")
+--    , "-C",         "lto"
+    , "-C",         "no-stack-check"
+    , "-L",         buildOut
+    , "--emit",     "ir,asm,link"
+    , "--out-dir",  buildOut
+    ]
 
 -- Takes a directory containing a rust lib and a list of rust dependencies and builds the lib
-compileRlib :: String -> [String] -> Action ()
-compileRlib dir deps = do
-  co <- compileOpts
-  libFiles <- getDirectoryFiles dir ["//*.rs"]
-  need $ map (\f -> dir </> f) libFiles
-  need $ map (\l -> "_build" </> l) deps
-  cmd "rustc" co "--out-dir" buildOut "-L" buildOut (dir </> "lib.rs")
+compileRust :: CrateType -> String -> [String] -> Action ()
+compileRust ty dir deps = do
+  defaultOpts <- compileOpts
+  libFiles <- getDirectoryFiles dir ["//*.rs"] >>= (return . map (\f -> dir </> f))
+  let depFiles = map (\l -> buildOut </> l) deps
+  need $ libFiles ++ depFiles
+  let compileMe = case ty of
+        Bin  -> "main.rs"
+        Rlib -> "lib.rs"
+  cmd "rustc" defaultOpts
+      (dir </> compileMe)
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
-  want [buildOut </> "rsL4-boot.bin"]
+--  want [buildOut </> "rsL4-boot.bin"]
+  want [buildOut </> "rsL4-init.elf"]
 
   phony "clean" $ do
     putNormal "Cleaning files in _build"
@@ -44,16 +63,16 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
   buildOut </> "rsL4-boot.bin" *> \out -> do
     tc <- getEnvOrFail "TOOLCHAIN"
     need
-      [ buildDir </> "kernel.elf"
-      , buildDir </> "gen_boot_image.sh"
-      , buildDir </> "archive.bin.lsd"
-      , buildDir </> "linker.lds"
-      , buildDir </> "elfloader.o"
+      [ buildOut </> "kernel.elf"
+      , buildOut </> "gen_boot_image.sh"
+      , buildOut </> "archive.bin.lsd"
+      , buildOut </> "linker.lds"
+      , buildOut </> "elfloader.o"
 
-      , buildDir </> "rsL4-init.elf"
+      , buildOut </> "rsL4-init.elf"
       ]
-    let genImageOutput = out -<.> "elf"
-    () <- cmd (buildDir </> "gen_boot_image.sh") (buildDir </> "kernel.elf") (buildDir </> "rsL4-init.elf") genImageOut
+    let genImageOut = out -<.> "elf"
+    () <- cmd (buildOut </> "gen_boot_image.sh") (buildOut </> "kernel.elf") (buildOut </> "rsL4-init.elf") genImageOut
     cmd (tc ++ "objcopy") "-O" "binary" genImageOut out
 
   buildOut </> "kernel.elf" *> \out -> do
@@ -71,12 +90,8 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
     cmd "curl" "https://storage.googleapis.com/git-repo-downloads/repo" "-o" out
 
   buildOut </> "rsL4-init.elf" *> \out -> do
-    initFiles <- getDirectoryFiles "rsL4-init" ["//*"]
-    need
-      [ buildOut </> "libcore.rlib"
-      ] ++ initFiles
-    cmd "rustc" "rsL4-init/src/main.rs"
+    compileRust Bin "rsL4-init" ["libcore.rlib"]
 
-  buildOut </> "libcore.rlib" *> \_ -> do
-    compileRlib "rust-src/src/libcore" []
+  buildOut </> "libcore.rlib" *> \out -> do
+    compileRust Rlib "rust-src/src/libcore" []
 
