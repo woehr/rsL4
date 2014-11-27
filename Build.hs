@@ -3,7 +3,7 @@ import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
 
-data CrateType = Bin | Rlib
+data CrateType = Bin | Rlib | StaticLib
 
 buildOut :: String
 buildOut = "_build/outputs"
@@ -45,11 +45,12 @@ compileRust ty dir deps = do
   libFiles <- getDirectoryFiles dir ["//*.rs"] >>= (return . map (\f -> dir </> f))
   let depFiles = map (\l -> buildOut </> l) deps
   need $ libFiles ++ depFiles
-  let compileMe = case ty of
-        Bin  -> "main.rs"
-        Rlib -> "lib.rs"
-  cmd "rustc" defaultOpts
-      (dir </> compileMe)
+  let (fn, extraOpts) = case ty of
+        Bin       -> ("main.rs", ["--crate-type", "bin"])
+        Rlib      -> ("lib.rs",  ["--crate-type", "rlib"])
+        StaticLib -> ("lib.rs",  ["--crate-type", "staticlib"])
+  cmd "rustc" (defaultOpts ++ extraOpts)
+      (dir </> fn)
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
@@ -75,23 +76,39 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
     () <- cmd (buildOut </> "gen_boot_image.sh") (buildOut </> "kernel.elf") (buildOut </> "rsL4-init.elf") genImageOut
     cmd (tc ++ "objcopy") "-O" "binary" genImageOut out
 
-  buildOut </> "kernel.elf" *> \out -> do
+  buildOut </> "kernel.elf" *> \_ -> do
     need [pyOut </> "bin/activate", buildOut </> "repo"]
     let buildFileDir = "seL4-build-files"
     buildFiles <- getDirectoryFiles buildFileDir ["//*"]
     need $ map (\f -> buildFileDir </> f) buildFiles
     cmd (buildFileDir </> "build.sh") buildFileDir (buildOut </> "repo") pyOut sel4Out buildOut
 
-  pyOut </> "bin/activate" *> \out -> do
+  pyOut </> "bin/activate" *> \_ -> do
     pyVer <- getEnvOrFail "PYTHON_EXE"
     cmd "virtualenv" ("--python=" ++ pyVer) pyOut
 
   buildOut </> "repo" *> \out -> do
     cmd "curl" "https://storage.googleapis.com/git-repo-downloads/repo" "-o" out
 
-  buildOut </> "rsL4-init.elf" *> \out -> do
-    compileRust Bin "rsL4-init" ["libcore.rlib"]
+  buildOut </> "rsL4-init.elf" *> \_ -> do
+    compileRust Bin "rsL4-init"
+      [ "libmorestack.a"
+      , "libcompiler-rt.a"
+      , "libcore.rlib"
+      ]
 
-  buildOut </> "libcore.rlib" *> \out -> do
+  buildOut </> "morestack.o" *> \out -> do
+    let inp = "morestack/morestack.s"
+    need [inp]
+    tc <- getEnvOrFail "TOOLCHAIN"
+    cmd (tc ++ "gcc") "-c" inp "-o" out
+
+  buildOut </> "libmorestack.a" *> \out -> do
+    let inp = buildOut </> "morestack.o"
+    need [inp]
+    tc <- getEnvOrFail "TOOLCHAIN"
+    cmd (tc ++ "ar") "rcs" out inp
+
+  buildOut </> "libcore.rlib" *> \_ -> do
     compileRust Rlib "rust-src/src/libcore" []
 
