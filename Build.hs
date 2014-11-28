@@ -46,7 +46,10 @@ compileRust ty dir deps = do
   let depFiles = map (\l -> buildOut </> l) deps
   need $ libFiles ++ depFiles
   let (fn, extraOpts) = case ty of
-        Bin       -> ("main.rs", ["--crate-type", "bin"])
+        Bin       -> ( "main.rs",
+                     [ "--crate-type", "bin"
+                     , "-C",           "link-args=-nostdlib"
+                     ])
         Rlib      -> ("lib.rs",  ["--crate-type", "rlib"])
         StaticLib -> ("lib.rs",  ["--crate-type", "staticlib"])
   cmd "rustc" (defaultOpts ++ extraOpts)
@@ -90,24 +93,29 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
   buildOut </> "repo" *> \out -> do
     cmd "curl" "https://storage.googleapis.com/git-repo-downloads/repo" "-o" out
 
-  buildOut </> "rsL4-init.elf" *> \_ -> do
+  buildOut </> "rsL4-init.elf" *> \out -> do
     compileRust Bin "rsL4-init"
       [ "libmorestack.a"
       , "libcompiler-rt.a"
       , "libcore.rlib"
       ]
-
-  buildOut </> "morestack.o" *> \out -> do
-    let inp = "morestack/morestack.s"
-    need [inp]
-    tc <- getEnvOrFail "TOOLCHAIN"
-    cmd (tc ++ "gcc") "-c" inp "-o" out
+    copyFile' (out -<.> "") out
 
   buildOut </> "libmorestack.a" *> \out -> do
-    let inp = buildOut </> "morestack.o"
+    let inp = "rust-src/src/rt/arch/arm/morestack.S"
     need [inp]
     tc <- getEnvOrFail "TOOLCHAIN"
-    cmd (tc ++ "ar") "rcs" out inp
+    () <- cmd (tc ++ "gcc") "-c" inp "-o" (out -<.> "o")
+    cmd (tc ++ "ar") "rcs" out (out -<.> "o")
+
+  -- A dummy more stack library so we don't have to invoke the linker manually
+  -- TODO: Build the real libcompiler-rt.a when it becomes required
+  buildOut </> "libcompiler-rt.a" *> \out -> do
+    let inp = "compiler-rt/compiler-rt.s"
+    need [inp]
+    tc <- getEnvOrFail "TOOLCHAIN"
+    () <- cmd (tc ++ "gcc") "-c" inp "-o" (out -<.> "o")
+    cmd (tc ++ "ar") "rcs" out (out -<.> "o")
 
   buildOut </> "libcore.rlib" *> \_ -> do
     compileRust Rlib "rust-src/src/libcore" []
