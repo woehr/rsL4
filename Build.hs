@@ -11,6 +11,10 @@ buildOut = "_build/outputs"
 sel4Out :: String
 sel4Out = "_build/seL4"
 
+-- TODO: Use the PLAT environment variable for outputs where it makes sense
+genBootDir:: String
+genBootDir = sel4Out </> "stage/arm/am335x/common/elfloader"
+
 pyOut :: String
 pyOut = "_build/venv"
 
@@ -55,36 +59,42 @@ compileRust ty dir deps = do
   cmd "rustc" (defaultOpts ++ extraOpts)
       (dir </> fn)
 
+sel4Outputs :: [String]
+sel4Outputs =
+  [ sel4Out </> "build/kernel/kernel.elf"
+  ]
+
+genBootOutputs =
+  [ genBootDir </> "gen_boot_image.sh"
+  , genBootDir </> "archive.bin.lds"
+  , genBootDir </> "linker.lds"
+  , genBootDir </> "elfloader.o"
+  ]
+
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
---  want [buildOut </> "rsL4-boot.bin"]
-  want [buildOut </> "rsL4-init.elf"]
+  want [buildOut </> "rsL4-boot.bin"]
 
   phony "clean" $ do
     putNormal "Cleaning files in _build"
     removeFilesAfter "_build" ["//*"]
 
+-- TODO: Make this depend also on cpio-strip being built correctly
   buildOut </> "rsL4-boot.bin" *> \out -> do
     tc <- getEnvOrFail "TOOLCHAIN"
-    need
-      [ buildOut </> "kernel.elf"
-      , buildOut </> "gen_boot_image.sh"
-      , buildOut </> "archive.bin.lsd"
-      , buildOut </> "linker.lds"
-      , buildOut </> "elfloader.o"
-
-      , buildOut </> "rsL4-init.elf"
-      ]
+    need $
+      sel4Outputs ++ genBootOutputs ++
+        [ buildOut </> "rsL4-init.elf"
+        ]
     let genImageOut = out -<.> "elf"
-    () <- cmd (buildOut </> "gen_boot_image.sh") (buildOut </> "kernel.elf") (buildOut </> "rsL4-init.elf") genImageOut
+    () <- cmd (genBootDir </> "gen_boot_image.sh") (sel4Out </> "build/kernel/kernel.elf") (buildOut </> "rsL4-init.elf") genImageOut
     cmd (tc ++ "objcopy") "-O" "binary" genImageOut out
 
-  buildOut </> "kernel.elf" *> \_ -> do
-    need [pyOut </> "bin/activate", buildOut </> "repo"]
+  (sel4Outputs ++ genBootOutputs) &%> \_ -> do
     let buildFileDir = "seL4-build-files"
-    buildFiles <- getDirectoryFiles buildFileDir ["//*"]
-    need $ map (\f -> buildFileDir </> f) buildFiles
-    cmd (buildFileDir </> "build.sh") buildFileDir (buildOut </> "repo") pyOut sel4Out buildOut
+    buildFiles <- getDirectoryFiles buildFileDir ["//*"] >>= (return . map (\f -> buildFileDir </> f))
+    need $ buildFiles ++ [pyOut </> "bin/activate", buildOut </> "repo"]
+    cmd (buildFileDir </> "build.sh") buildFileDir (buildOut </> "repo") pyOut sel4Out
 
   pyOut </> "bin/activate" *> \_ -> do
     pyVer <- getEnvOrFail "PYTHON_EXE"

@@ -7,6 +7,11 @@ export TOOLCHAIN="arm-none-eabi-"
 export TARGET="arm-unknown-linux-gnueabi"
 export PROCESSOR="cortex-a8"
 
+# Required for gen_boot_image.sh
+export PLAT="am335x"
+# TODO: Unify TOOLCHAIN and TOOLPREFIX in build script
+export TOOLPREFIX=$TOOLCHAIN
+
 # Used for compiling the seL4 kernel
 export PYTHON_EXE="python2.7"
 
@@ -16,7 +21,7 @@ fi
 
 if [ ! -f ".cabal-sandbox/bin/shake" ]; then
   cabal update;
-  cabal install shake;
+  cabal install shake==0.14.2;
 fi
 
 if [ ! -d "rust-src" ]; then

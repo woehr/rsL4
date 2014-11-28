@@ -9,8 +9,6 @@ repo=`pwd`/$2
 venv=`pwd`/$3
 #### Place to build seL4
 buildDir=`pwd`/$4
-### Place to put results
-outDir=`pwd`/$5
 
 # Activate the virtualenv so we can build
 source $venv/bin/activate
@@ -36,7 +34,4 @@ make
 
 # Deactivate the virtualenv
 deactivate
-
-# Copy output
-cp $buildDir/build/kernel/kernel.elf $outDir
 
