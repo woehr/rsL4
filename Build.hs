@@ -2,6 +2,7 @@ import Development.Shake
 import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
+import System.Directory (canonicalizePath)
 
 data CrateType = Bin | Rlib | StaticLib
 
@@ -38,7 +39,7 @@ compileOpts = do
 --    , "-C",         "lto"
     , "-C",         "no-stack-check"
     , "-L",         buildOut
-    , "--emit",     "ir,asm,link"
+    , "--emit",     "llvm-ir,asm,link"
     , "--out-dir",  buildOut
     ]
 
@@ -79,17 +80,26 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
     putNormal "Cleaning files in _build"
     removeFilesAfter "_build" ["//*"]
 
--- TODO: Make this depend also on cpio-strip being built correctly
   buildOut </> "rsL4-boot.bin" *> \out -> do
     tc <- getEnvOrFail "TOOLCHAIN"
     need $
       sel4Outputs ++ genBootOutputs ++
-        [ buildOut </> "rsL4-init.elf"
+        [ buildOut </> "cpio-strip"
+        , buildOut </> "rsL4-init.elf"
         ]
     let genImageOut = out -<.> "elf"
-    () <- cmd (genBootDir </> "gen_boot_image.sh") (sel4Out </> "build/kernel/kernel.elf") (buildOut </> "rsL4-init.elf") genImageOut
+    canonPath <- liftIO $ canonicalizePath buildOut
+    opt <- addPath [canonPath] []
+    () <- cmd opt (genBootDir </> "gen_boot_image.sh") (sel4Out </> "build/kernel/kernel.elf") (buildOut </> "rsL4-init.elf") genImageOut
     cmd (tc ++ "objcopy") "-O" "binary" genImageOut out
 
+  buildOut </> "cpio-strip" *> \out -> do
+    -- We don't strictly need sel4Outputs but rather sources that are fetched as part of the seL4 build step
+    need sel4Outputs
+    cmd "gcc" "-W" "-Wall" "-Wextra" "-std=gnu1x" ("-I" ++ sel4Out </> "libs/libcpio/include") (sel4Out </> "libs/libcpio/src/cpio.c") (sel4Out </> "tools/common/cpio-strip.c") "-o" out
+
+  -- TODO: The manner in which seL4 is built should be improved.
+  --       Currently building seL4 doesn't depend on any of the fetched sources, only the build inputs
   (sel4Outputs ++ genBootOutputs) &%> \_ -> do
     let buildFileDir = "seL4-build-files"
     buildFiles <- getDirectoryFiles buildFileDir ["//*"] >>= (return . map (\f -> buildFileDir </> f))

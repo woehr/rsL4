@@ -1,9 +1,9 @@
 #![crate_name = "rsL4-init"]
 #![crate_type = "bin"]
 #![no_std]
-#![feature(lang_items, phase)]
+#![feature(lang_items)]
 
-#[phase(plugin, link)]
+#[macro_use]
 extern crate core;
 
 /*

@@ -21,7 +21,7 @@ fi
 
 if [ ! -f ".cabal-sandbox/bin/shake" ]; then
   cabal update;
-  cabal install shake==0.14.2;
+  cabal install "shake>=0.14";
 fi
 
 if [ ! -d "rust-src" ]; then
