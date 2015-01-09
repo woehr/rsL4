@@ -10,6 +10,13 @@ need to be available on the command line. ARM versions of the gcc binutils is al
 
 To build, run `build.sh`.
 
+## Build dependencies
+- sponge (moreutils package on Arch Linux)
+- rustc (matching the version of source pulled in by build.sh)
+- python (2.7)
+- arm-none-eabi or arm-linux-gnueabi toolchain
+- and probably more things
+
 # Libraries/modules
 
 ## rsL4-boot
