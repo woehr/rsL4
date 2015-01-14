@@ -2,7 +2,7 @@
 
 # Environment variables used to compile rust code
 # Note that seL4 compilation options are defined in its .config
-export RUSTC_BRANCH="master"
+export RUSTC_BRANCH="1.0.0-alpha"
 export TOOLCHAIN="arm-none-eabi-"
 export TARGET="arm-unknown-linux-gnueabi"
 export PROCESSOR="cortex-a8"
@@ -31,7 +31,7 @@ fi
 cd rust-src
 git fetch origin
 git checkout --force $RUSTC_BRANCH
-git merge origin/$RUSTC_BRANCH
+#git merge origin/$RUSTC_BRANCH
 cd ..
 
 mkdir -p _shake
