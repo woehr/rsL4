@@ -28,6 +28,11 @@ cp -f $buildFiles/Kbuild $buildDir/Kbuild
 cp -f $buildFiles/Kconfig $buildDir/Kconfig
 cp -Rf $buildFiles/configs $buildDir/configs
 
+# Apply patches
+pushd $buildDir/tools/elfloader/src/arch-arm/
+patch < $buildFiles/elfloader-mmu-workaround.patch
+popd
+
 # Build
 make bbb_defconfig
 make

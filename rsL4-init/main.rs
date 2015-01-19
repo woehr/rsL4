@@ -59,12 +59,12 @@ fn recurse(call_count: u32) {
 //#[no_mangle]
 //#[allow(dead_code)]
 //pub extern fn main(argc: u32, argv: * const * const u8) -> ! {
-#[no_mangle]
 #[start]
-pub fn _start(_: int, _: *const *const u8) -> int {
-  0
+pub fn rsl4_init(_: isize, _: * const * const u8) -> isize {
 //  write!(&mut uart0, "There were {} args.\n", argc as u8);
 //  recurse(0);
+  loop {}
+  0
 }
 
 // stack_exhausted won't ever be called since we implement our own __morestack. Even so, the

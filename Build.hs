@@ -2,6 +2,7 @@ import Development.Shake
 import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
+
 import System.Directory (canonicalizePath)
 
 data CrateType = Bin | Rlib | StaticLib
@@ -31,7 +32,8 @@ compileOpts = do
   cpu <- getEnvOrFail "PROCESSOR"
   tc  <- getEnvOrFail "TOOLCHAIN"
   return
-    [ "--target",   tar
+    [ "--verbose"
+    , "--target",   tar
     , "-C",         ("target-cpu=" ++ cpu)
     , "-C",         ("ar=" ++ tc ++ "ar")
     -- Linker is gcc because linker options are passed as -Wl,opt which ld doesn't recognize
@@ -49,14 +51,25 @@ compileRust ty dir deps = do
   defaultOpts <- compileOpts
   libFiles <- getDirectoryFiles dir ["//*.rs"] >>= (return . map (\f -> dir </> f))
   let depFiles = map (\l -> buildOut </> l) deps
-  need $ libFiles ++ depFiles
+      linkerScript = "rsL4-runtime/link.lds"
+  need $ libFiles ++ depFiles ++ [buildOut </> "rsL4-runtime.o"]
+
+  case ty of
+       Bin -> need [linkerScript]
+       _   -> return ()
+
   let (fn, extraOpts) = case ty of
-        Bin       -> ( "main.rs",
-                     [ "--crate-type", "bin"
-                     , "-C",           "link-args=-nostdlib"
-                     ])
-        Rlib      -> ("lib.rs",  ["--crate-type", "rlib"])
-        StaticLib -> ("lib.rs",  ["--crate-type", "staticlib"])
+       Bin       -> ( "main.rs",
+                    [ "--crate-type", "bin"
+                    , "-C",           "link-args=" ++ foldl (\l r -> l ++ "," ++ r) "-Wl"
+                                                           [ "--script=" ++ linkerScript
+                                                           , "-errt_start"
+                                                           , "-nostdlib"
+                                                           , buildOut </> "rsL4-runtime.o"
+                                                           ]
+                    ])
+       Rlib      -> ("lib.rs",  ["--crate-type", "rlib"])
+       StaticLib -> ("lib.rs",  ["--crate-type", "staticlib"])
   cmd "rustc" (defaultOpts ++ extraOpts)
       (dir </> fn)
 
@@ -120,6 +133,12 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
       , "libcore.rlib"
       ]
     copyFile' (out -<.> "") out
+
+  buildOut </> "rsL4-runtime.o" *> \out -> do
+    let inp = "rsL4-runtime/rrt.S"
+    need [inp]
+    tc  <- getEnvOrFail "TOOLCHAIN"
+    cmd (tc ++ "gcc") "-c" inp "-o" out
 
   buildOut </> "libmorestack.a" *> \out -> do
     let inp = "rust-src/src/rt/arch/arm/morestack.S"
