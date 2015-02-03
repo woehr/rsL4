@@ -30,8 +30,8 @@ fi
 
 cd rust-src
 git fetch origin
-git checkout --force $RUSTC_BRANCH
-git merge origin/$RUSTC_BRANCH
+#git checkout --force $RUSTC_BRANCH
+#git merge origin/$RUSTC_BRANCH
 cd ..
 
 mkdir -p _shake

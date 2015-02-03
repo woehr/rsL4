@@ -1,0 +1,9 @@
+[package]
+
+name = "rsL4-genTool"
+version = "0.0.1"
+authors = ["Jordan Woehr <jordanwoehr@gmail.com>"]
+
+[dependencies]
+xml-rs     = "*"
+

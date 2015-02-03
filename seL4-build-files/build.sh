@@ -12,14 +12,15 @@ buildDir=`pwd`/$4
 
 # Activate the virtualenv so we can build
 source $venv/bin/activate
-pip install --upgrade distribute tempita
+pip install --upgrade pip distribute
+pip install tempita
 
 # Change to working directory
 mkdir -p $buildDir
 cd $buildDir
 
 # Init repo and get source
-python $repo init -u http://github.com/jmwoehr/rsL4-manifest.git
+python $repo init -u https://github.com/jmwoehr/rsL4-manifest
 python $repo sync
 
 # Copy in our build files
