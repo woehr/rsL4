@@ -1,10 +1,11 @@
 #![crate_name = "rsL4-init"]
 #![crate_type = "bin"]
 #![no_std]
-#![feature(asm, lang_items, start)]
+#![feature(asm, core, lang_items, start)]
 
 #[macro_use]
 extern crate core;
+extern crate rsl4;
 
 #[start]
 pub fn rsl4_init(_: isize, _: * const * const u8) -> isize {

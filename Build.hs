@@ -141,11 +141,11 @@ project_rsL4_genTool = "rsL4-genTool"
 
 -- generated lib source file
 target_rsL4_generated_rs :: String
-target_rsL4_generated_rs = "rsL4-generated.rs"
+target_rsL4_generated_rs = "rsL4-generated" </> "lib.rs"
 
 -- generated lib binary
-target_rsL4_libGenerated :: String
-target_rsL4_libGenerated = "rsL4-libGenerated.rlib"
+target_librsl4 :: String
+target_librsl4 = "librsl4.rlib"
 
 
 main :: IO ()
@@ -176,14 +176,14 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
       [ "libmorestack.a"
       , "libcompiler-rt.a"
       , "libcore.rlib"
-      , target_rsL4_libGenerated
+      , target_librsl4
       ]
     copyFile' (out -<.> "") out
 
-  buildOut </> target_rsL4_libGenerated *> \out -> do
+  buildOut </> target_librsl4 *> \_-> do
     need [ buildOut </> target_rsL4_generated_rs
          ]
-    cmd "rustc" "-o" out (buildOut </> target_rsL4_generated_rs)
+    compileRust Rlib (takeDirectory $ buildOut </> target_rsL4_generated_rs) []
 
   buildOut </> target_rsL4_generated_rs *> \out -> do
     need [ project_rsL4_genTool </> "target" </> target_rsL4_genTool

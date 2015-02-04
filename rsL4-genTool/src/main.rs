@@ -15,12 +15,15 @@ use xml::reader::events::*;
 const NUM_INPUTS  : usize = 3;
 const NUM_OUTPUTS : usize = 1;
 
-const INTRO : &'static str = "mod rsL4 {\nmod generated {\n";
-const OUTRO : &'static str = "}\n}\n";
-
-const MOD_SYS        : &'static str = "syscall";
-const MOD_INVOC      : &'static str = "invocation";
-const MOD_INVOC_ARCH : &'static str = "invocation_arch";
+const INTRO : &'static str = "#![crate_type=\"lib\"]\n\
+                              #![crate_name=\"rsl4\"]\n\
+                              #![no_std]\n\
+                              mod rsl4 {\n\
+                              mod generated {\n\
+                             ";
+const OUTRO : &'static str = "}\n\
+                              }\n\
+                             ";
 
 fn main() {
     let argv = args();
@@ -42,15 +45,18 @@ fn main() {
     let mut h_out    = File::create(&Path::new(&argv[4])).unwrap();
     let mut write_or_err = |&mut: s: &str| {
         h_out.write_all(s.as_bytes()).unwrap();
+        h_out.write_all("\n".as_bytes()).unwrap();
     };
 
     write_or_err(INTRO);
 
-    write_or_err(&format!("mod {} {{\n", MOD_SYS));
     for line in gen_syscalls(h_syscall).iter() {
         write_or_err(&line);
     }
-    write_or_err("}\n");
+
+    for line in gen_invocs(h_invoc, h_invoc_arch).iter() {
+        write_or_err(&line);
+    }
 
     write_or_err(OUTRO);
 }
@@ -83,10 +89,56 @@ fn gen_syscalls(h_in: File) -> Vec<String> {
         }
     }
 
-    let mut ret_val = vec!["struct Syscall(isize);".to_string()];
+    let mut ret_val = vec!["pub enum Syscall {".to_string()];
     for (i, ref sc) in syscalls.iter().enumerate() {
-        ret_val.push(format!("const {} : Syscall = Syscall({});\n", sc, -(i as isize + 1)));
+        ret_val.push(format!("  {} = {},", sc, -(i as isize + 1)));
     }
+    ret_val.push("}".to_string());
+    ret_val
+}
+
+fn gen_invocs(h_invoc: File, h_invoc_arch: File) -> Vec<String> {
+    let invoc_reader = BufferedReader::new(h_invoc);
+    let mut parser = EventReader::new(invoc_reader);
+
+    let mut invocs = vec!["InvalidInvocation".to_string()];
+
+    for e in parser.events() {
+        match e {
+            XmlEvent::StartElement { name, attributes, namespace: _ } => {
+                if name.local_name == "method" {
+                    invocs.push(attributes.iter().find(| &attr |{
+                        attr.name.local_name == "id"
+                    }).unwrap().value.clone());
+                }
+            },
+            XmlEvent::Error(e) => panic!("Xml parsing error: {}", e),
+            _ => {}
+        }
+    }
+
+    let invoc_arch_reader = BufferedReader::new(h_invoc_arch);
+    parser = EventReader::new(invoc_arch_reader);
+
+    for e in parser.events() {
+        match e {
+            XmlEvent::StartElement { name, attributes, namespace: _ } => {
+                if name.local_name == "method" {
+                    invocs.push(attributes.iter().find(| &attr |{
+                        attr.name.local_name == "id"
+                    }).unwrap().value.clone());
+                }
+            },
+            XmlEvent::Error(e) => panic!("Xml parsing error: {}", e),
+            _ => {}
+        }
+    }
+
+    let mut ret_val = vec!["pub enum InvocationLabel {".to_string()];
+    for ref invoc_label in invocs.iter() {
+        ret_val.push(format!("  {},", invoc_label));
+    }
+    ret_val.push("}".to_string());
     ret_val
 }
 
