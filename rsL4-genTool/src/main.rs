@@ -48,7 +48,7 @@ fn main() {
         h_out.write_all("\n".as_bytes()).unwrap();
     };
 
-    write_or_err(INTRO);
+//    write_or_err(INTRO);
 
     for line in gen_syscalls(h_syscall).iter() {
         write_or_err(&line);
@@ -58,7 +58,7 @@ fn main() {
         write_or_err(&line);
     }
 
-    write_or_err(OUTRO);
+//    write_or_err(OUTRO);
 }
 
 fn display_help(exe: &String) {

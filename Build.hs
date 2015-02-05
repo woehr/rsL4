@@ -141,12 +141,15 @@ project_rsL4_genTool = "rsL4-genTool"
 
 -- generated lib source file
 target_rsL4_generated_rs :: String
-target_rsL4_generated_rs = "rsL4-generated" </> "lib.rs"
+target_rsL4_generated_rs = "librsl4_generated.rs"
 
--- generated lib binary
+-- librsl4 binary
 target_librsl4 :: String
 target_librsl4 = "librsl4.rlib"
 
+-- librsl4 source
+project_librsl4 :: String
+project_librsl4 = "librsl4"
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
@@ -181,9 +184,22 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
     copyFile' (out -<.> "") out
 
   buildOut </> target_librsl4 *> \_-> do
+    needDirRec project_librsl4
     need [ buildOut </> target_rsL4_generated_rs
          ]
-    compileRust Rlib (takeDirectory $ buildOut </> target_rsL4_generated_rs) []
+
+    -- I do the build of librsl4 this way for several reasons. First, we don't know what the files in the
+    -- librsl4 project will be ahead of time and I don't want to have to modify the build script when that
+    -- project changes. I haven't tried reading the files from the directory and creating a target that way
+    -- but it may be possible. Second, I didn't want to copy the generated file into the source tree, but
+    -- instead for everything to be in the build directory.
+    -- There is probably a better way, but this works for now.
+    let generatedDir = buildOut </> project_librsl4 </> "src" </> "types" </> "generated"
+    () <- cmd "rm" "-r" (buildOut </> project_librsl4)
+    () <- cmd "cp" "-R" project_librsl4 buildOut
+    () <- cmd "mkdir" "-p" generatedDir
+    () <- cmd "cp" "-T" (buildOut </> target_rsL4_generated_rs) (generatedDir </> "mod.rs")
+    compileRust Rlib (buildOut </> project_librsl4 </> "src") []
 
   buildOut </> target_rsL4_generated_rs *> \out -> do
     need [ project_rsL4_genTool </> "target" </> target_rsL4_genTool
