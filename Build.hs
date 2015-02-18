@@ -3,7 +3,7 @@ import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
 
-import Data.List (intersperse)
+import Data.List (intercalate)
 import System.Directory (canonicalizePath)
 
 data CrateType = Bin | Rlib
@@ -55,7 +55,6 @@ compileOpts = do
 --    , "-C",         "lto"
     , "-C",         "no-stack-check"
     , "-L",         buildOut
-    , "--emit",     "llvm-ir,asm,link"
     , "--out-dir",  buildOut
     ]
 
@@ -65,24 +64,14 @@ compileRust ty dir deps = do
   defaultOpts <- compileOpts
   libFiles <- getDirectoryFiles dir ["//*.rs"] >>= (return . map (\f -> dir </> f))
   let depFiles = map (\l -> buildOut </> l) deps
-      linkerScript = "rsL4-runtime/link.lds"
-  need $ libFiles ++ depFiles ++ [buildOut </> "rsL4-runtime.o"]
-
-  case ty of
-       Bin -> need [linkerScript]
-       _   -> return ()
-
+  need $ libFiles ++ depFiles
   let (fn, extraOpts) = case ty of
-       Bin  -> ( "main.rs",
-               [ "--crate-type", "bin"
-               , "-C",           "link-args=" ++ foldl (\l r -> l ++ "," ++ r) "-Wl"
-                                                      [ "--script=" ++ linkerScript
-                                                      , "-errt_start"
-                                                      , "-nostdlib"
-                                                      , buildOut </> "rsL4-runtime.o"
-                                                      ]
-               ])
-       Rlib -> ("lib.rs",  ["--crate-type", "rlib"])
+                             Rlib -> ("lib.rs" , [ "--crate-type", "rlib"
+                                                 , "--emit",       "llvm-ir,asm,link"
+                                                 ])
+                             Bin  -> ("main.rs", [ "--crate-type", "bin"
+                                                 , "--emit",       "llvm-ir,asm,obj"
+                                                 ])
   cmd "rustc" (defaultOpts ++ extraOpts) (dir </> fn)
 
 -- seL4 inputs
@@ -175,13 +164,26 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
     cmd (tc ++ "objcopy") "-O" "binary" genImageOut out
 
   buildOut </> "rsL4-init.elf" *> \out -> do
-    compileRust Bin "rsL4-init"
-      [ "libmorestack.a"
-      , "libcompiler-rt.a"
-      , "libcore.rlib"
-      , target_librsl4
-      ]
-    copyFile' (out -<.> "") out
+    need [ buildOut </> "rsL4-runtime.o"
+         , buildOut </> "rsL4-init.o"
+         , buildOut </> "librsl4.rlib"
+         --, buildOut </> "libmorestack.a"
+         --, buildOut </> "libcompiler-rt.a"
+         ]
+    tc <- getEnvOrFail "TOOLCHAIN"
+    cmd [ (tc ++ "gcc")
+        , "-nostdlib"
+        , "-Wl,--as-needed,--gc-section,-errt_start,--script=rsL4-runtime/link.lds"
+--        , "-pie"
+        , (buildOut </> "rsL4-runtime.o")
+        , (buildOut </> "rsL4-init.o")
+        , (buildOut </> "librsl4.rlib")
+        , (buildOut </> "libcore.rlib")
+        , "-o",  out
+        ]
+
+  buildOut </> "rsL4-init.o" *> \out -> do
+    compileRust Bin "rsL4-init" ["libmorestack.a", "libcompiler-rt.a", "libcore.rlib", "librsl4.rlib"]
 
   buildOut </> target_librsl4 *> \_-> do
     needDirRec project_librsl4
@@ -195,7 +197,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build/"} $ do
     -- instead for everything to be in the build directory.
     -- There is probably a better way, but this works for now.
     let generatedDir = buildOut </> project_librsl4 </> "src" </> "types" </> "generated"
-    () <- cmd "rm" "-r" (buildOut </> project_librsl4)
+    () <- cmd "rm" "-rf" (buildOut </> project_librsl4)
     () <- cmd "cp" "-R" project_librsl4 buildOut
     () <- cmd "mkdir" "-p" generatedDir
     () <- cmd "cp" "-T" (buildOut </> target_rsL4_generated_rs) (generatedDir </> "mod.rs")

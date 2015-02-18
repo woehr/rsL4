@@ -5,25 +5,19 @@ SECTIONS
     PROVIDE(__executable_start = 0x80000000);
     . = 0x80000000 + SIZEOF_HEADERS;
 
-    .text : {
-        *(.text*)
-    }
+    .text : { *(.text*) }
 
     . = ALIGN(32);
-    .rodata : {
-        *(.rodata*)
-    }
+    .rodata : { *(.rodata*) }
 
     . = ALIGN(32);
-    .data : {
-        *(.data)
-    }
+    .data : { *(.data) }
 
     . = ALIGN(32);
-    .bss : {
-        *(.bss)
-        *(COMMON)
-    }
+    .bss : { *(.bss .bss.*) }
+
+    . = ALIGN(32);
+    .rel.plt : { *(.rel.plt) }
 
     . = ALIGN(32);
     /* The LLVM generate stack check code expects the top of the stack to be stored

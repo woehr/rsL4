@@ -10,7 +10,6 @@ extern crate rsl4;
 #[start]
 pub fn rsl4_init(_: isize, _: * const * const u8) -> isize {
   loop {}
-  0
 }
 
 // stack_exhausted won't ever be called since we implement our own __morestack. Even so, the
@@ -21,13 +20,12 @@ pub fn rsl4_init(_: isize, _: * const * const u8) -> isize {
 
 // This function will only be called if a call to panic! is made.
 #[lang = "panic_fmt"]              fn panic_fmt() -> ! {
-//  put_str("panic_fmt called");
   loop {}
 }
 
 // These functions are expected by something for stack unwinding.
 #[no_mangle]
-extern fn __aeabi_unwind_cpp_pr0() {}
+pub extern "C" fn __aeabi_unwind_cpp_pr0() {}
 #[no_mangle]
-extern fn __aeabi_unwind_cpp_pr1() {}
+pub extern "C" fn __aeabi_unwind_cpp_pr1() {}
 
