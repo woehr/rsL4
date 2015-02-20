@@ -1,5 +1,3 @@
-use core::mem::{transmute};
-
 use super::types::*;
 //use super::functions::{set_user_data};
 

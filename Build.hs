@@ -48,6 +48,10 @@ compileOpts = do
   return
     [ "--verbose"
     , "--target",   tar
+    , "-A",         "dead_code"
+    , "-A",         "non_camel_case_types"
+    , "-A",         "non_snake_case"
+    , "-A",         "non_upper_case_globals"
     , "-C",         ("target-cpu=" ++ cpu)
     , "-C",         ("ar=" ++ tc ++ "ar")
     -- Linker is gcc because linker options are passed as -Wl,opt which ld doesn't recognize
