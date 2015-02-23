@@ -1,7 +1,3 @@
-rust-src
-seL4-src
-_build
-_shake
-.cabal-sandbox
-cabal.sandbox.config
+nixpkgs
+result
 

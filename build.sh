@@ -1,39 +1,16 @@
 #!/bin/sh
 
-# Environment variables used to compile rust code
-# Note that seL4 compilation options are defined in its .config
-export RUSTC_BRANCH="master"
-export TOOLCHAIN="arm-none-eabi-"
-export TARGET="arm-unknown-linux-gnueabi"
-export PROCESSOR="cortex-a8"
+NIXPKGS_VER=05b97395ae05b4b89538998333cef8e7c2abb5c6
 
-# Required for gen_boot_image.sh
-export PLAT="am335x"
-# TODO: Unify TOOLCHAIN and TOOLPREFIX in build script
-export TOOLPREFIX=$TOOLCHAIN
-
-# Used for compiling the seL4 kernel
-export PYTHON_EXE="python2.7"
-
-if [ ! -d ".cabal-sandbox" ]; then
-  cabal sandbox init;
+if [ ! -d "nixpkgs" ]; then
+  git clone https://github.com/nixos/nixpkgs nixpkgs;
 fi
 
-if [ ! -f ".cabal-sandbox/bin/shake" ]; then
-  cabal update;
-  cabal install "shake>=0.14";
-fi
-
-if [ ! -d "rust-src" ]; then
-  git clone https://github.com/rust-lang/rust.git rust-src;
-fi
-
-cd rust-src
+pushd nixpkgs
 git fetch origin
-#git checkout --force $RUSTC_BRANCH
-#git merge origin/$RUSTC_BRANCH
-cd ..
+git reset --hard
+git checkout --force $NIXPKGS_VER
+popd
 
-mkdir -p _shake
-cabal exec ghc -- --make Build.hs -rtsopts -with-rtsopts=-IO -outputdir=_shake -o _shake/build && _shake/build "$@"
+nix-build -I nixpkgs=./nixpkgs -f ./default.nix -A rsL4
 
