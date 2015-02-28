@@ -12,5 +12,5 @@ git reset --hard
 git checkout --force $NIXPKGS_VER
 popd
 
-nix-build -I nixpkgs=./nixpkgs -f ./default.nix -A rsL4
+nix-build -I nixpkgs=./nixpkgs ./default.nix -A rsl4-core
 

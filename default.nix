@@ -5,11 +5,10 @@ let
 
   callPackage = pkgs.lib.callPackageWith (pkgs // self);
   foldSpace = pkgs.lib.concatStringsSep " ";
-  fetchgit = pkgs.fetchgit;
-  fetchurl = pkgs.fetchurl;
-  mkDerivation = stdenv.mkDerivation;
-  overrideDerivation = stdenv.lib.overrideDerivation;
 
+  inherit (pkgs) fetchgit fetchurl srcOnly;
+  inherit (stdenv) mkDerivation;
+  inherit (stdenv.lib) overrideDerivation;
 
   rustRev = "522d09dfecbeca1595f25ac58c6d0178bbd21d7d";
   # Rather than bothering with importing rustc/common.nix
@@ -33,17 +32,14 @@ let
 
   self = pkgs // rec {
     
-    rsl4-rust-src = mkDerivation {
+    rsl4-rust-src = srcOnly {
+      inherit stdenv;
       name = "rsl4-rust-src";
       src = fetchgit {
         url = "https://github.com/rust-lang/rust";
         rev = rustRev;
         sha256 = "10vljjggs9h86xj8bcvvrkmz73pbkr7xqz9zk4i48kxk0cnbmd9g";
       };
-      builder = builtins.toFile "builder.sh" ''
-        source $stdenv/setup
-        cp -R $src $out
-      '';
     };
  
     rsl4-rustc = overrideDerivation pkgs.rustcMaster (rustcOld:
