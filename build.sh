@@ -1,6 +1,8 @@
 #!/bin/sh
 
-NIXPKGS_VER=05b97395ae05b4b89538998333cef8e7c2abb5c6
+# This is the version of nixpkgs that introduces an easier way of creating
+# rustc derivations.
+NIXPKGS_VER=5821e91bd1270dcab53337e5bc1c6ad4c79e0f23
 
 if [ ! -d "nixpkgs" ]; then
   git clone https://github.com/nixos/nixpkgs nixpkgs;
