@@ -43,7 +43,7 @@ fn main() {
 
     // output file
     let mut h_out    = File::create(&Path::new(&argv[4])).unwrap();
-    let mut write_or_err = |&mut: s: &str| {
+    let mut write_or_err = |s: &str| {
         h_out.write_all(s.as_bytes()).unwrap();
         h_out.write_all("\n".as_bytes()).unwrap();
     };
@@ -65,7 +65,7 @@ fn display_help(exe: &String) {
     let exe_path = Path::new(exe);
     let exe_name = exe_path.filename_str().unwrap();
     let mut err = stderr();
-    write!(&mut err, "Usage: {} <syscall_spec> <invoc_spec> <invoc_arch_spec>\n", exe_name).unwrap();
+    write!(&mut err, "Usage: {} <syscall_spec> <invoc_spec> <invoc_arch_spec> <output_file>\n", exe_name).unwrap();
 }
 
 fn gen_syscalls(h_in: File) -> Vec<String> {

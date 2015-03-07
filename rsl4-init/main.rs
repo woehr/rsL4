@@ -1,7 +1,7 @@
-#![crate_name = "rsL4-init"]
+#![crate_name = "rsl4-init"]
 #![crate_type = "bin"]
 #![no_std]
-#![feature(asm, core, lang_items, start)]
+#![feature(asm, core, lang_items, no_std, start)]
 
 #[macro_use]
 extern crate core;

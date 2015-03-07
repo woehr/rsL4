@@ -1,18 +1,17 @@
 // This module corresponds to sel4/types.h. Unlike the sel4 header, it is not separated into
 // separate files for different architectures.
 
-mod generated;
 pub use self::generated::*;
-
-mod constants;
-//mod errors;
-mod message_info;
-//mod object_type;
-
 use self::constants::*;
 //use self::errors::*;
 use self::message_info::*;
 //use self::object_type::*;
+
+mod generated;
+mod constants;
+//mod errors;
+mod message_info;
+//mod object_type;
 
 enum FaultType {
     NoFault = 0,

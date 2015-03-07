@@ -1,7 +1,7 @@
 #![crate_type="lib"]
 #![crate_name="rsl4"]
 #![no_std]
-#![feature(asm, core)]
+#![feature(asm, core, no_std)]
 
 #[macro_use]
 extern crate core;

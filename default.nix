@@ -78,8 +78,10 @@ let
       src = ./rsl4-init;
       buildInputs = [ rustc ];
       builder = writeScript "builder.sh" ''
-        source $stdenv
+        source $stdenv/setup
         mkdir -p $out
+        rustc --crate-type bin ${rsl4-rust-flags} --emit obj -L ${rsl4-core} -L ${rsl4-librsl4} --out-dir $out $src/main.rs
+        ${rsl4-cc} -nostdlib -Wl,--as-needed,--gc-section,-errt_start,--script=${rsl4-runtime}/link.lds ${rsl4-runtime}/rsl4-runtime.o $out/rsl4-init.o ${rsl4-librsl4}/librsl4.rlib ${rsl4-core}/libcore.rlib -o $out/rsl4-init.elf
       '';
     };
 
@@ -90,10 +92,11 @@ let
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        cp $src ./src
+        cp -r $src/* .
+        chmod -R +w ./src
         mkdir -p ./src/types/generated
         cp ${rsl4-generated}/generated.rs ./src/types/generated/mod.rs
-        rustc --crate-type static ${rsl4-rust-flags} --out-dir $out
+        rustc --crate-type rlib ${rsl4-rust-flags} -L ${rsl4-core} --out-dir $out ./src/lib.rs
       '';
     };
 
@@ -118,19 +121,23 @@ let
       builder = builtins.toFile "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        rsl4-gen-tool $srcs > $out/generated.rs
+        rsL4-genTool $srcs $out/generated.rs
       '';
     };
 
+    # Uses a precompiled binary hack until there is an easy way to build cargo
+    # packages in nix
     rsl4-gen-tool = mkDerivation {
       name = "rsl4-gen-tool";
-      src = ./rsl4-gen-tool;
-      buildInputs = [ cargo rustc ];
+#      src = ./rsl4-gen-tool;
+      src = ./bin;
+#      buildInputs = [ cargo rustc ];
       builder = builtins.toFile "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out/bin
-        cp -r $src/* .
-        cargo build --verbose
+        cp $src/rsL4-genTool $out/bin
+#        cp -r $src/* .
+#        cargo build --verbose
       '';
     };
 
@@ -158,11 +165,12 @@ let
 
     rsl4-runtime = mkDerivation {
       name = "rsl4-runtime";
-      src = ./rsL4-runtime;
+      src = ./rsl4-runtime;
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        ${rsl4-cc} -c $src/rrt.S -o $out/rsL4-runtime.o
+        ${rsl4-cc} -c $src/rrt.S -o $out/rsl4-runtime.o
+        cp $src/link.lds $out
       '';
     };
 
