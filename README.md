@@ -6,11 +6,12 @@
 
 This project uses nix to perform builds. Nix is technically a package manager
 but makes handling dependencies and performing clean builds very easy. Install
-the nix package manager if you do not already have it.
+the nix package manager if you do not already have it (http://nixos.org/nix).
 
 Run `build.sh` and all dependencies required to build the project will be
-downloaded and compiled. If successful, the result will be symlinked to
-`result` in the base directory.
+downloaded and installed (this may take a while if rustc has to compile from
+source). If successful, the result will be symlinked to `result` in the base
+directory.
 
 There are a few options that can be modified in `default.nix`, however this
 is not recommened at this time.
