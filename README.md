@@ -4,31 +4,31 @@
 
 # Building
 
-The build script is written using [Shake](https://github.com/ndmitchell/shake). GHC and Cabal will
-need to be available on the command line. ARM versions of the gcc binutils is also required. See
-`build.sh` for variables that can be modified.
+This project uses nix to perform builds. Nix is technically a package manager
+but makes handling dependencies and performing clean builds very easy. Install
+the nix package manager if you do not already have it.
 
-To build, run `build.sh`.
+Run `build.sh` and all dependencies required to build the project will be
+downloaded and compiled. If successful, the result will be symlinked to
+`result` in the base directory.
 
-## Build dependencies
-- sponge (moreutils package on Arch Linux)
-- rustc (matching the version of source pulled in by build.sh)
-- python (2.7)
-- arm-none-eabi or arm-linux-gnueabi toolchain
-- and probably more things
+There are a few options that can be modified in `default.nix`, however this
+is not recommened at this time.
 
 # Libraries/modules
 
-## rsL4-boot
+## rsl4-init
 
-This is a bootloader (currently only for the am335x platform, specifically the Beaglebone Black)
-that loads the kernel and init images into external memory, sets-up the MMU, and enters the
-kernel.
+The initial kernel thread which sets up all other system services.
 
-### rsL4-boot notes
-The bootloader is booted from u-boot which does some setup for us, but we need to be wary
-of the state u-boot has left us in. For now, we assume that no interrupts will fire
-and that we don't need to relocate the vector table (u-boot will be running from external
-memory and when we load the kernel/init images it's possible it will be overwritten.
-Furthermore, we assume that external memory and the UART are setup.
+## rsl4-boot
+
+This is the bootable component of the project. It is produced by combining the
+kernel image and rsl4-init image into a single, bootable archive. To run with
+u-boot, load the image into ram (address 0x82000000 on the am335x) and jump
+to that address. See the seL4 documentation for more details.
+
+## librsl4
+
+Rust library that provides a low level interface to seL4 (similar to libsel4).
 
