@@ -11,8 +11,8 @@ let
   inherit (stdenv.lib) overrideDerivation;
 
   ############ Modifiable parametres ############
-  # It would make more sense for these parameters to be function arguments
-  # in the future.
+  # It would make more sense for these parameters to be function arguments or
+  # some kind of other option in the future.
 
   # Rust version
   rustc = pkgs.rustcAlpha2;
@@ -21,7 +21,7 @@ let
   # Kernel build parametres
   sel4-platform = "am335x";
 
-  # Version of source code to use which are git commit hashes
+  # Version of source code to use, which are git commit hashes
   # master as of 2015/02/27 for seL4 repos
   sel4-rev          = "b62b20f24dc4411db84c69fdbc0f9fdf9d02655a";
   sel4-common-rev    = "39faa87bd8fbce1d9c2d1718eda8677c939a1262";
@@ -44,11 +44,14 @@ let
 
   # For kernel and rsl4 compilation
   target-toolchain = pkgs.gcc-arm-embedded;
+  # extract from binary name?
+  tool-prefix = "arm-none-eabi-";
 
   # Rust compiler parametres for arm cortex-a8
-  rsl4-cc = "${target-toolchain}/bin/arm-none-eabi-gcc";
-  rsl4-ar = "${target-toolchain}/bin/arm-none-eabi-ar";
-  rsl4-objcopy = "${target-toolchain}/bin/arm-none-eabi-objcopy";
+  rsl4-cc = "${target-toolchain}/bin/${tool-prefix}gcc";
+  rsl4-ar = "${target-toolchain}/bin/${tool-prefix}ar";
+  rsl4-objcopy = "${target-toolchain}/bin/${tool-prefix}objcopy";
+
   rsl4-rust-flags = foldSpace [ "--verbose"
                                 "--target ${rsl4-target}"
                                 "-A dead_code"
@@ -62,14 +65,24 @@ let
                               ];
   self = rec {
 
-    rsl4-boot = let sel4-bootloader-dir = "${rsl4-sel4}/stage/arm/${sel4-platform}/common/elfloader";
-    in mkDerivation {
+    rsl4-boot = mkDerivation {
       name = "rsl4-boot";
-      src = sel4-bootloader-dir;
-      buildInputs = [ rsl4-cpio-strip ];
+      srcs = [ "${rsl4-elfloader-src}/gen_boot_image.sh"
+               "${rsl4-elfloader-src}/src/archive.bin.lds"
+               "${rsl4-elfloader-src}/src/arch-arm/linker.lds"
+               
+               "${rsl4-sel4}/build/kernel/kernel.elf"
+               "${rsl4-sel4}/build/arm/${sel4-platform}/elfloader/elfloader.o"
+               "${rsl4-init}/rsl4-init.elf"
+             ];
+      buildInputs = [ target-toolchain rsl4-cpio-strip pkgs.cpio pkgs.which ];
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
+        cp $srcs .
+        substituteInPlace ./gen_boot_image.sh --replace /bin/bash $SHELL
+        PLAT=${sel4-platform} TOOLPREFIX=${tool-prefix} ./gen_boot_image.sh ./kernel.elf ./rsl4-init.elf $out/rsl4-boot.elf
+        ${rsl4-objcopy} -O binary $out/rsl4-boot.elf $out/rsl4-boot.bin
       '';
     };
 
@@ -225,10 +238,10 @@ let
         chmod -R +w ./*
 
         # Get rid of absolute paths that break building on nix
-        substituteInPlace ./tools/common/project-arm.mk --replace /bin/bash ${pkgs.bash}/bin/bash
-        substituteInPlace ./kernel/tools/xmllint.sh --replace /bin/bash ${pkgs.bash}/bin/bash
-        substituteInPlace ./kernel/tools/cpp_gen.sh --replace /bin/bash ${pkgs.bash}/bin/bash
-        substituteInPlace ./kernel/tools/changed.sh --replace /bin/bash ${pkgs.bash}/bin/bash
+        substituteInPlace ./tools/common/project-arm.mk --replace /bin/bash $SHELL
+        substituteInPlace ./kernel/tools/xmllint.sh --replace /bin/bash $SHELL
+        substituteInPlace ./kernel/tools/cpp_gen.sh --replace /bin/bash $SHELL
+        substituteInPlace ./kernel/tools/changed.sh --replace /bin/bash $SHELL
 
         # Do the build
         make bbb_defconfig
