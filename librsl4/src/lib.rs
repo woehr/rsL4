@@ -9,6 +9,7 @@ extern crate core;
 // This module corresponds to sel4/sel4.h
 
 pub mod boot_info;
+pub mod helpers;
 pub mod syscalls;
 pub mod types;
 

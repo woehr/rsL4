@@ -93,7 +93,7 @@ let
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        rustc --crate-type bin ${rsl4-rust-flags} --emit obj -L ${rsl4-core} -L ${rsl4-librsl4} --out-dir $out $src/main.rs
+        rustc --crate-type bin ${rsl4-rust-flags} --emit asm,llvm-ir,obj -L ${rsl4-core} -L ${rsl4-librsl4} --out-dir $out $src/main.rs
         ${rsl4-cc} -nostdlib -Wl,--as-needed,--gc-section,-errt_start,--script=${rsl4-runtime}/link.lds ${rsl4-runtime}/rsl4-runtime.o $out/rsl4-init.o ${rsl4-librsl4}/librsl4.rlib ${rsl4-core}/libcore.rlib -o $out/rsl4-init.elf
       '';
     };
@@ -109,7 +109,7 @@ let
         chmod -R +w ./src
         mkdir -p ./src/types/generated
         cp ${rsl4-generated}/generated.rs ./src/types/generated/mod.rs
-        rustc --crate-type rlib ${rsl4-rust-flags} -L ${rsl4-core} --out-dir $out ./src/lib.rs
+        rustc --crate-type rlib --emit asm,llvm-ir,link ${rsl4-rust-flags} -L ${rsl4-core} --out-dir $out ./src/lib.rs
       '';
     };
 
@@ -120,7 +120,7 @@ let
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        rustc ${rsl4-rust-flags} --out-dir $out $src/lib.rs
+        rustc --emit asm,llvm-ir,link ${rsl4-rust-flags} --out-dir $out $src/lib.rs
       '';
     };
 
