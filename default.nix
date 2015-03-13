@@ -6,7 +6,7 @@ let
   callPackage = pkgs.lib.callPackageWith (pkgs // self);
   foldSpace = pkgs.lib.concatStringsSep " ";
 
-  inherit (pkgs) fetchgit fetchurl srcOnly writeScript;
+  inherit (pkgs) lib fetchgit fetchurl srcOnly writeScript writeText;
   inherit (stdenv) mkDerivation;
   inherit (stdenv.lib) overrideDerivation;
 
@@ -35,6 +35,7 @@ let
 
   # NOT FULLY SUPPORTED. Calculated from the sel4 platform we're compiling for
   # but only works for am335x
+  rsl4-arch = "arm";
   rsl4-cpu = if sel4-platform == "am335x"
                then "cortex-a8"
                else throw "Unsupported sel4-platform";
@@ -42,27 +43,31 @@ let
   # Can also be determined from the sel4-platform
   rsl4-target = "arm-unknown-linux-gnueabi";
 
-  # For kernel and rsl4 compilation
-  target-toolchain = pkgs.gcc-arm-embedded;
-  # extract from binary name?
-  tool-prefix = "arm-none-eabi-";
+  # The target toolchain for kernel and rsl4 compilation
+  rsl4-toolchain = self.rsl4-arm-linux-gnueabi;
+  tool-prefix = "arm-linux-gnueabi-";
 
-  # Rust compiler parametres for arm cortex-a8
-  rsl4-cc = "${target-toolchain}/bin/${tool-prefix}gcc";
-  rsl4-ar = "${target-toolchain}/bin/${tool-prefix}ar";
-  rsl4-objcopy = "${target-toolchain}/bin/${tool-prefix}objcopy";
+  rsl4-cc = "${rsl4-toolchain}/bin/${tool-prefix}gcc";
+  rsl4-ar = "${rsl4-toolchain}/bin/${tool-prefix}ar";
+  rsl4-objcopy = "${rsl4-toolchain}/bin/${tool-prefix}objcopy";
 
-  rsl4-rust-flags = foldSpace [ "--verbose"
-                                "--target ${rsl4-target}"
-                                "-A dead_code"
-                                "-A non_camel_case_types"
-                                "-A non_snake_case"
-                                "-A non_upper_case_globals"
-                                "-C target-cpu=${rsl4-cpu}"
-                                "-C ar=${rsl4-ar}"
-                                "-C linker=${rsl4-cc}"
-                                "-C no-stack-check"
-                              ];
+  rsl4-rust-flags = foldSpace [
+    "--verbose"
+    "--target ${self.rsl4-target-json}/target.json"
+    "-A dead_code"
+    "-A non_camel_case_types"
+    "-A non_snake_case"
+    "-A non_upper_case_globals"
+    # Entry point, executable location, stack space for initial task
+    # -nostdlib,-errt_start
+    "-C link-args=-T${self.rsl4-runtime}/link.lds"
+    # location of compiler-rt
+    "-L ${self.rsl4-runtime}"
+    # location of libcore
+    "-L ${self.rsl4-rustc-arm-libs}/asdf"
+    "-Z print-link-args"
+  ];
+
   self = rec {
 
     rsl4-boot = mkDerivation {
@@ -75,7 +80,7 @@ let
                "${rsl4-sel4}/build/arm/${sel4-platform}/elfloader/elfloader.o"
                "${rsl4-init}/rsl4-init.elf"
              ];
-      buildInputs = [ target-toolchain rsl4-cpio-strip pkgs.cpio pkgs.which ];
+      buildInputs = [ rsl4-toolchain rsl4-cpio-strip pkgs.cpio pkgs.which ];
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
@@ -93,8 +98,7 @@ let
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        rustc --crate-type bin ${rsl4-rust-flags} --emit asm,llvm-ir,obj -L ${rsl4-core} -L ${rsl4-librsl4} --out-dir $out $src/main.rs
-        ${rsl4-cc} -nostdlib -Wl,--as-needed,--gc-section,-errt_start,--script=${rsl4-runtime}/link.lds ${rsl4-runtime}/rsl4-runtime.o $out/rsl4-init.o ${rsl4-librsl4}/librsl4.rlib ${rsl4-core}/libcore.rlib -o $out/rsl4-init.elf
+        rustc --crate-type bin ${rsl4-rust-flags} -L ${rsl4-librsl4} --emit asm,llvm-ir,link --out-dir $out $src/main.rs -o rsl4-init.elf
       '';
     };
 
@@ -109,21 +113,12 @@ let
         chmod -R +w ./src
         mkdir -p ./src/types/generated
         cp ${rsl4-generated}/generated.rs ./src/types/generated/mod.rs
-        rustc --crate-type rlib --emit asm,llvm-ir,link ${rsl4-rust-flags} -L ${rsl4-core} --out-dir $out ./src/lib.rs
+        rustc --crate-type rlib --emit asm,llvm-ir,link ${rsl4-rust-flags} --out-dir $out ./src/lib.rs
       '';
     };
 
-    rsl4-core = mkDerivation {
-      name = "rsl4-core";
-      src = "${rsl4-rust-src}/src/libcore";
-      buildInputs = [ rustc ];
-      builder = writeScript "builder.sh" ''
-        source $stdenv/setup
-        mkdir -p $out
-        rustc --emit asm,llvm-ir,link ${rsl4-rust-flags} --out-dir $out $src/lib.rs
-      '';
-    };
-
+    # Generates types based on kernel configuration parameters (except it
+    # doesn't do that yet ... TODO).
     rsl4-generated = mkDerivation {
       name = "rsl4-generated";
       srcs = [ "${rsl4-sel4-src}/libsel4/include/api/syscall.xml"
@@ -143,7 +138,7 @@ let
     rsl4-gen-tool = mkDerivation {
       name = "rsl4-gen-tool";
 #      src = ./rsl4-gen-tool;
-      src = ./bin;
+      src = ./bin; # EWWWWW.
 #      buildInputs = [ cargo rustc ];
       builder = builtins.toFile "builder.sh" ''
         source $stdenv/setup
@@ -154,39 +149,30 @@ let
       '';
     };
 
-    rsl4-compiler-rt = mkDerivation {
-      name = "rsl4-compiler-rt";
-      src = ./compiler-rt;
-      builder = writeScript "builder.sh" ''
-        source $stdenv/setup
-        mkdir -p $out
-        ${rsl4-cc} -c $src/compiler-rt.s -o compiler-rt.o
-        ${rsl4-ar} rcs $out/libcompiler-rt.a compiler-rt.o
-      '';
-    };
-
-    rsl4-morestack = mkDerivation {
-      name = "rsl4-morestack";
-      src = "${rsl4-rust-src}/src/rt/arch/arm";
-      builder = writeScript "builder.sh" ''
-        source $stdenv/setup
-        mkdir -p $out
-        ${rsl4-cc} -c $src/morestack.S -o morestack.o
-        ${rsl4-ar} rcs $out/libmorestack.a morestack.o
-      '';
-    };
-
+    # Sleeze our runtime into compiler-rt for linking. Kudos to @neykov.
+    # https://github.com/neykov/armboot/blob/871cd89a324f81aaa9ad188373d4a13504dc9c10/Makefile
     rsl4-runtime = mkDerivation {
       name = "rsl4-runtime";
       src = ./rsl4-runtime;
+      # This builder extracts all objects from libcompiler-rt.a and recombines
+      # them with our own runtime object (so we don't need to worry about extra
+      # linker flags). It also copies the linker script into the output.
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        ${rsl4-cc} -c $src/rrt.S -o $out/rsl4-runtime.o
+        mkdir ./objs
+        ${rsl4-cc} -c $src/rrt.S -o ./objs/rsl4-runtime.o
+        cd ./objs
+        ${rsl4-ar} x ${rsl4-rustc-arm-libs}/libcompiler-rt.a
+        ${rsl4-ar} rcs $out/libcompiler-rt.a ./objs/*
         cp $src/link.lds $out
       '';
     };
 
+    ##### seL4 derivations ####
+
+    # seL4 provides a cpio-strip utility to make cpio files (completely?)
+    # deterministic.
     rsl4-cpio-strip = mkDerivation {
       name = "rsl4-cpio-strip";
       srcs = [ "${rsl4-cpio-src}/src/cpio.c"
@@ -200,13 +186,15 @@ let
       '';
     };
 
+    # Builds the kernel and bootloader
+    # Maybe refactor this into different build phases in the future
     rsl4-sel4 = mkDerivation {
       name = "rsl4-sel4";
       src = ./sel4-build-files;
       buildInputs = [
+        rsl4-toolchain
         pkgs.which
         pkgs.python2Packages.tempita
-        target-toolchain
         pkgs.libxml2                  # for xmllint
         pkgs.clang                    # for clang-format
         pkgs.moreutils                # for sponge
@@ -319,6 +307,222 @@ let
         rev = sel4-cpio-rev;
         sha256 = "0v15fpbkf0py98b97qlqd6qy1rn5vywdp7wa577gvwdng1v0qri7";
       };
+    };
+
+    # Rust ARM hackery to build arm libs with arm-none-eabi toolchain
+
+    # See the following
+    # https://github.com/neykov/armboot/blob/871cd89a324f81aaa9ad188373d4a13504dc9c10/target.json
+    # https://github.com/rust-lang/rust/blob/c9b03c24ec346e6405883032094f47805ef9c43e/src/librustc_back/target/arm_unknown_linux_gnueabi.rs
+    rsl4-target-json = writeText "target.json" ''
+      {
+      "data-layout": "e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:64:128-a:0:64-n32",
+      "llvm-target": "${rsl4-target}",
+      "linker": "${tool-prefix}gcc",
+      "target-endian": "little",
+      "target-pointer-width": "32",
+      "arch": "${rsl4-arch}",
+      "os": "none",
+      "cpu": "${rsl4-cpu}",
+      "features": "+v6",
+      "relocation-model": "static",
+      "linker-is-gnu": true,
+      "has-rpath": true,
+      "morestack": false,
+      "disable-redzone": true,
+      "executables": true,
+      "dynamic_linking": false
+      }
+    '';
+
+    # Simply add our rsl4 target to the rustc configure flags so we get arm libs
+    rsl4-rustc-arm-libs = overrideDerivation rustc (old: {
+      buildInputs = old.buildInputs ++ [ arm-unknown-linux-gnueabi ];
+      configureFlags = old.configureFlags ++ [
+#        "--build=${rsl4-target}"
+#        "--host=${rsl4-target}"
+        "--target=${rsl4-target}"
+#        "--disable-clang"
+      ];
+    });
+
+    arm-unknown-linux-gnueabi = mkDerivation {
+      name = "arm-linux-gnueabi";
+      srcs = [
+        (fetchurl {
+          urls = [
+            http://ftp.kernel.org/pub/linux/kernel/v3.x/linux-3.15.4.tar.xz
+            http://ftp.kernel.org/pub/linux/kernel/v3.x/longterm/v3.15/linux-3.15.4.tar.xz
+            http://ftp.kernel.org/pub/linux/kernel/v3.x/longterm/linux-3.15.4.tar.xz
+          ];
+          sha256 = "1y8khv9vrd2sr0gi03x40zl32lbjh35kayl9kdkhdqfwp9wxflgy";
+        })
+        (fetchurl {
+          urls = [
+            ftp://ftp.sunet.se/pub/gnu/gmp/gmp-5.1.3.tar.xz
+            ftp://ftp.gnu.org/gnu/gmp/gmp-5.1.3.tar.xz
+            http://ftp.sunet.se/pub/gnu/gmp/gmp-5.1.3.tar.xz
+            http://ftp.gnu.org/gnu/gmp/gmp-5.1.3.tar.xz
+          ];
+          sha256 = "0wbhn3wih61vjcs94q531fipfvvzqfq2v4qr03rl3xaggyiyvqny";
+        })
+        (fetchurl {
+          urls = [
+            http://www.mpfr.org/mpfr-current/mpfr-3.1.2.tar.xz
+            http://www.mpfr.org/mpfr-3.1.2/mpfr-3.1.2.tar.xz
+          ];
+          sha256 = "0fs501qi8l523gs3cpy4jjcnvwxggyfbklcys80wq236xx3hz79r";
+        })
+        (fetchurl {
+          urls = [
+            ftp://ftp.linux.student.kuleuven.be/pub/people/skimo/isl/isl-0.12.2.tar.bz2
+            http://mirrors.kernel.org/sources.redhat.com/gcc/infrastructure/isl-0.12.2.tar.bz2
+          ];
+          sha256 = "1d0zs64yw6fzs6b7kxq6nh9kvas16h8b43agwh30118jjzpdpczl";
+        })
+        (fetchurl {
+          urls = [
+            http://www.bastoul.net/cloog/pages/download/cloog-0.18.1.tar.bz2
+            ftp://gcc.gnu.org/pub/gcc/infrastructure/cloog-0.18.1.tar.bz2
+          ];
+          sha256 = "1d0zs64yw6fzs6b7kxq6nh9kvas16h8b43agwh30118jjzpdpczl";
+        })
+        (fetchurl {
+          urls = [
+            http://www.multiprecision.org/mpc/download/mpc-1.0.2.tar.xz
+          ];
+          sha256 = "1264h3ivldw5idph63x35dqqdzqqbxrm5vlir0xyx727i96zaqdm";
+        })
+        (fetchurl {
+          urls = [
+            http://www.mr511.de/software/libelf-0.8.13.tar.bz2
+          ];
+          sha256 = "0vf7s9dwk2xkmhb79aigqm0x0yfbw1j0b9ksm51207qwr179n6jr";
+        })
+        (fetchurl {
+          urls = [
+            ftp://ftp.gnu.org/gnu/binutils/binutils-2.22.tar.bz2
+            ftp://ftp.kernel.org/pub/linux/devel/binutils/binutils-2.22.tar.bz2
+            http://ftp.gnu.org/gnu/binutils/binutils-2.22.tar.bz2
+            http://ftp.kernel.org/pub/linux/devel/binutils/binutils-2.22.tar.bz2
+            ftp://gcc.gnu.org/pub/binutils/releases/binutils-2.22.tar.bz2
+            ftp://gcc.gnu.org/pub/binutils/snapshots/binutils-2.22.tar.bz2
+          ];
+          sha256 = "1a9w66v5dwvbnawshjwqcgz7km6kw6ihkzp6sswv9ycc3knzhykc";
+        })
+        (fetchurl {
+          urls = [
+            ftp://ftp.gnu.org/gnu/gcc/gcc-4.9.1.tar.bz2
+            ftp://ftp.gnu.org/gnu/gcc/gcc-4.9.1/gcc-4.9.1.tar.bz2
+            ftp://ftp.gnu.org/gnu/gcc/releases/gcc-4.9.1/gcc-4.9.1.tar.bz2
+            http://ftp.gnu.org/gnu/gcc/gcc-4.9.1.tar.bz2
+            http://ftp.gnu.org/gnu/gcc/gcc-4.9.1/gcc-4.9.1.tar.bz2
+            http://ftp.gnu.org/gnu/gcc/releases/gcc-4.9.1/gcc-4.9.1.tar.bz2
+            ftp://ftp.irisa.fr/pub/mirrors/gcc.gnu.org/gcc/releases/gcc-4.9.1/gcc-4.9.1.tar.bz2
+            ftp://ftp.uvsq.fr/pub/gcc/snapshots/4.9.1/gcc-4.9.1.tar.bz2
+            http://launchpad.net/gcc-linaro/4.9.1/4.9.1/+download/gcc-4.9.1.tar.bz2
+          ];
+          sha256 = "0zki3ngi0gsidnmsp88mjl2868cc7cm5wm1vwqw6znja28d7hd6k";
+        })
+        (fetchurl {
+          urls = [
+             ftp://ftp.gnu.org/gnu/glibc/glibc-2.19.tar.xz
+             http://ftp.gnu.org/gnu/glibc/glibc-2.19.tar.xz
+             ftp://gcc.gnu.org/pub/glibc/releases/glibc-2.19.tar.xz
+             ftp://gcc.gnu.org/pub/glibc/snapshots/glibc-2.19.tar.xz
+          ];
+          sha256 = "18m2dssd6ja5arxmdxinc90xvpqcsnqjfwmjl2as07j0i3srff9d";
+        })
+        (fetchurl {
+          urls = [
+            http://dmalloc.com/releases/dmalloc-5.5.2.tgz
+          ];
+          sha256 = "12j23s8rxpwcxxaqdmszms7jgw9ny36zpnv7pnrhr594xip5rgnk";
+        })
+        (fetchurl {
+          urls = [
+            http://downloads.sourceforge.net/project/duma/duma/2.5.15/duma_2_5_15.tar.gz
+          ];
+          sha256 = "05sffd9y6ndx2vi9wdbhgl8sf85jsj5gpnyspp8kl2g3ai47kbxs";
+        })
+        (fetchurl {
+          urls = [
+            ftp://ftp.gnu.org/pub/gnu/gdb/gdb-7.8.tar.xz
+            http://ftp.gnu.org/pub/gnu/gdb/gdb-7.8.tar.xz
+            ftp://sources.redhat.com/pub/gdb/releases/gdb-7.8.tar.xz
+            ftp://sources.redhat.com/pub/gdb/old-releases/gdb-7.8.tar.xz
+            http://launchpad.net/gdb-linaro/7.8/7.8/+download/gdb-7.8.tar.xz
+          ];
+          sha256 = "0xdqxjj77q60k19hn85msnbv9nchnpzi0lp7z7hm97zpfkhspi29";
+        })
+        (fetchurl {
+          urls = [
+            ftp://ftp.gnu.org/pub/gnu/ncurses/ncurses-5.9.tar.gz
+            http://ftp.gnu.org/pub/gnu/ncurses/ncurses-5.9.tar.gz
+            ftp://invisible-island.net/ncurses/ncurses-5.9.tar.gz
+          ];
+          sha256 = "0fsn7xis81za62afan0vvm38bvgzg5wfmv1m86flqcj0nj7jjilh";
+        })
+        (fetchurl {
+          urls = [
+            http://downloads.sourceforge.net/project/expat/expat/2.1.0/expat-2.1.0.tar.gz
+          ];
+          sha256 = "11pblz61zyxh68s5pdcbhc30ha1b2vfjd83aiwfg4vc15x3hadw2";
+        })
+        (fetchurl {
+          urls = [
+            ftp://ftp.de.debian.org/debian/pool/main/l/ltrace/ltrace_0.7.3.orig.tar.bz2
+            http://ftp.de.debian.org/debian/pool/main/l/ltrace/ltrace_0.7.3.orig.tar.bz2
+          ];
+          sha256 = "00wmbdghqbz6x95m1mcdd3wd46l6hgcr4wggdp049dbifh3qqvqf";
+        })
+        (fetchurl {
+          urls = [
+            http://downloads.sourceforge.net/project/strace/strace/4.8/strace-4.8.tar.xz
+          ];
+          sha256 = "1y6pw4aj4rw5470lqks1ml0n8jh5xbhwr5c3gb00bj570wgjk4pl";
+        })
+      ];
+      buildInputs = [ pkgs.which crosstool-ng ];
+      builder = writeScript "builder.sh" ''
+        source $stdenv/setup
+        mkdir -p $out
+
+        # Pre-fetch sources so crosstool-ng does not
+        mkdir -p ./dummy-home/src
+        for s in $srcs
+        do
+          # Get rid of checksum in filename when copying
+          cp $s ./dummy-home/src/$(basename $s | cut -d- -f2-)
+        done
+
+        ct-ng arm-unknown-linux-gnueabi
+
+        # Use a build directory for sources and outputs
+        substituteInPlace ./.config --replace $\{HOME\} ./dummy-home
+        # Don't do any downloads (srcs should be placed in ./dummy-home/src by default)
+        substituteInPlace ./.config --replace CT_SAVE_TARBALLS=y CT_SAVE_TARBALLS=n
+        # TODO: Figure out why it doesn't like ltrace
+        substituteInPlace ./.config --replace CT_DEBUG_ltrace=y CT_DEBUG_ltrace=n
+
+        ct-ng build
+      '';
+    };
+
+    crosstool-ng = let crosstool-ng-version = "1.20.0"; in mkDerivation {
+      name = "crosstool-ng";
+      src = fetchurl {
+        url = "http://crosstool-ng.org/download/crosstool-ng/crosstool-ng-${crosstool-ng-version}.tar.bz2";
+        sha256 = "0r1lqwqgw90q3a3gpr1a29zvn84r5d9id17byrid5nxmld8x5cdz";
+      };
+      buildInputs = with pkgs; [
+        which gperf bison flex texinfo wget libtool automake ncurses
+      ];
+      preBuild = ''
+        # We need to invoke the host gcc through nix's gcc-wrapper but
+        # crosstool-ng invokes it manually with the host triple prefixed
+        substituteInPlace ./scripts/crosstool-NG.sh.in --replace $\{CT_HOST\}-gcc gcc
+      '';
     };
   };
 in
