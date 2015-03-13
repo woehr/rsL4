@@ -389,13 +389,13 @@ let
         })
         (fetchurl {
           urls = [
-            http://www.multiprecision.org/mpc/download/mpc-1.0.2.tar.xz
+            http://www.multiprecision.org/mpc/download/mpc-1.0.2.tar.gz
           ];
           sha256 = "1264h3ivldw5idph63x35dqqdzqqbxrm5vlir0xyx727i96zaqdm";
         })
         (fetchurl {
           urls = [
-            http://www.mr511.de/software/libelf-0.8.13.tar.bz2
+            http://www.mr511.de/software/libelf-0.8.13.tar.gz
           ];
           sha256 = "0vf7s9dwk2xkmhb79aigqm0x0yfbw1j0b9ksm51207qwr179n6jr";
         })
@@ -488,22 +488,25 @@ let
         source $stdenv/setup
         mkdir -p $out
 
-        # Pre-fetch sources so crosstool-ng does not
-        mkdir -p ./dummy-home/src
+        # Where ct-ng will put stuff
+        mkdir -p ./dummy-home
+        # Where we put stuff so ct-ng doesn't fetch srcs from the internet
+        mkdir -p ./.build/tarballs
+
+        # Copy in sources
         for s in $srcs
         do
           # Get rid of checksum in filename when copying
-          cp $s ./dummy-home/src/$(basename $s | cut -d- -f2-)
+          cp $s ./.build/tarballs/$(basename $s | cut -d- -f2-)
         done
 
         ct-ng arm-unknown-linux-gnueabi
 
-        # Use a build directory for sources and outputs
-        substituteInPlace ./.config --replace $\{HOME\} ./dummy-home
-        # Don't do any downloads (srcs should be placed in ./dummy-home/src by default)
+        # Make sure the home we created is used
+        substituteInPlace ./.config --replace $\{HOME\} $\{CT_TOP_DIR\}/dummy-home
+
+        # No point in saving since the build dir is trashed anyways
         substituteInPlace ./.config --replace CT_SAVE_TARBALLS=y CT_SAVE_TARBALLS=n
-        # TODO: Figure out why it doesn't like ltrace
-        substituteInPlace ./.config --replace CT_DEBUG_ltrace=y CT_DEBUG_ltrace=n
 
         ct-ng build
       '';
@@ -515,13 +518,26 @@ let
         url = "http://crosstool-ng.org/download/crosstool-ng/crosstool-ng-${crosstool-ng-version}.tar.bz2";
         sha256 = "0r1lqwqgw90q3a3gpr1a29zvn84r5d9id17byrid5nxmld8x5cdz";
       };
-      buildInputs = with pkgs; [
+
+      # I'm assuming anything that needs ct-ng will also need it's dependencies
+      # in order to do anything meaningful since ct-ng is just a bunch of scipts
+      propagatedBuildInputs = with pkgs; [
         which gperf bison flex texinfo wget libtool automake ncurses
       ];
+
       preBuild = ''
         # We need to invoke the host gcc through nix's gcc-wrapper but
         # crosstool-ng invokes it manually with the host triple prefixed
-        substituteInPlace ./scripts/crosstool-NG.sh.in --replace $\{CT_HOST\}-gcc gcc
+        ${lib.concatMapStrings (a: "substituteInPlace ${a} --replace '\${CT_HOST}-gcc' gcc\n") [
+          "./scripts/crosstool-NG.sh.in"
+        ]}
+
+        # These substitutions don't prevent ct-ng from building but are required
+        # for any builds invoking ct-ng
+        ${lib.concatMapStrings (a: "substituteInPlace ${a} --replace '\${host}-gcc' gcc\n") [
+          "./scripts/build/companion_libs/110-mpfr.sh"
+          "./scripts/build/companion_libs/200-libelf.sh"
+        ]}
       '';
     };
   };
