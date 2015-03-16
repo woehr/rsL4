@@ -335,12 +335,10 @@ let
       }
     '';
 
-    # Simply add our rsl4 target to the rustc configure flags so we get arm libs
+    # Build our target rust version with the arm target for arm libs
     rsl4-rustc-arm-libs = overrideDerivation rustc (old: {
       buildInputs = old.buildInputs ++ [ arm-unknown-linux-gnueabi ];
       configureFlags = old.configureFlags ++ [
-#        "--build=${rsl4-target}"
-#        "--host=${rsl4-target}"
         "--target=${rsl4-target}"
 #        "--disable-clang"
       ];
@@ -498,7 +496,7 @@ let
         mkdir -p ./dummy-home
         # Where tarballs go so ct-ng doesn't fetch them from the internet
         mkdir -p ./.build/tarballs
-        # Where sources are extracted so we can patch what we need to
+        # Where extracted sources go so we can patch what we need to
         mkdir -p ./.build/src
 
         # Copy in sources
@@ -525,11 +523,20 @@ let
 
         ct-ng arm-unknown-linux-gnueabi
 
-        # Make sure the dummy home we created is used
-        substituteInPlace ./.config --replace $\{HOME\} $\{CT_TOP_DIR\}/dummy-home
+        # Install to the correct output directory
+        #substituteInPlace ./.config --replace CT_INSTALL_DIR=\"$\{CT_PREFIX_DIR\}\" CT_INSTALL_DIR=\"$out\"
 
-        # No point in saving since the build dir is trashed anyways
-        substituteInPlace ./.config --replace CT_SAVE_TARBALLS=y CT_SAVE_TARBALLS=n
+        substituteInPlace ./.config --replace CT_PREFIX_DIR=\"$\{HOME\}/x-tools/$\{CT_TARGET\}\" CT_PREFIX_DIR=\"$out\"
+
+        # This option makes the install directory read-only but nix will take
+        # care of that for us
+        substituteInPlace ./.config --replace CT_INSTALL_DIR_RO=y CT_INSTALL_DIR_RO=n
+
+        # This is unnecessary because we get a clean environment with nix
+        substituteInPlace ./.config --replace CT_RM_RF_PREFIX_DIR=y CT_RM_RF_PREFIX_DIR=n
+
+        # Use a location in the build directory in place of home
+        substituteInPlace ./.config --replace $\{HOME\} $\{CT_TOP_DIR\}/dummy-home
 
         ct-ng build
       '';
