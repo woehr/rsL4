@@ -347,7 +347,7 @@ let
     });
 
     arm-unknown-linux-gnueabi = mkDerivation {
-      name = "arm-linux-gnueabi";
+      name = "arm-unknown-linux-gnueabi";
       srcs = [
         (fetchurl {
           urls = [
@@ -483,26 +483,49 @@ let
           sha256 = "1y6pw4aj4rw5470lqks1ml0n8jh5xbhwr5c3gb00bj570wgjk4pl";
         })
       ];
-      buildInputs = [ pkgs.which crosstool-ng ];
+      buildInputs = [
+        crosstool-ng
+        pkgs.cloog # gcc
+        pkgs.perl  # kernel headers
+        pkgs.expat # cross-gdb
+        pkgs.file  # cleanup (executable stripping)
+      ];
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
 
         # Where ct-ng will put stuff
         mkdir -p ./dummy-home
-        # Where we put stuff so ct-ng doesn't fetch srcs from the internet
+        # Where tarballs go so ct-ng doesn't fetch them from the internet
         mkdir -p ./.build/tarballs
+        # Where sources are extracted so we can patch what we need to
+        mkdir -p ./.build/src
 
         # Copy in sources
         for s in $srcs
         do
           # Get rid of checksum in filename when copying
-          cp $s ./.build/tarballs/$(basename $s | cut -d- -f2-)
+          d=./.build/tarballs/$(basename $s | cut -d- -f2-)
+          cp $s $d
         done
+
+        # We have to patch some sources which is annoying because ct-ng would
+        # otherwise take care of extracting everything for us
+        tar -xf ./.build/tarballs/linux-3.15.4.tar.xz -C ./.build/src
+        tar -xf ./.build/tarballs/glibc-2.19.tar.xz -C ./.build/src
+
+        # Indicate to ct-ng that the tarball is already extracted
+        touch ./.build/src/.linux-3.15.4.extracted
+        touch ./.build/src/.glibc-2.19.extracted
+
+        # Do the our patching (perhaps this should be applied to all Makefiles
+        # and configure scripts?)
+        substituteInPlace ./.build/src/linux-3.15.4/Makefile --replace /bin/pwd pwd
+        substituteInPlace ./.build/src/glibc-2.19/configure --replace /bin/pwd pwd
 
         ct-ng arm-unknown-linux-gnueabi
 
-        # Make sure the home we created is used
+        # Make sure the dummy home we created is used
         substituteInPlace ./.config --replace $\{HOME\} $\{CT_TOP_DIR\}/dummy-home
 
         # No point in saving since the build dir is trashed anyways
@@ -519,25 +542,35 @@ let
         sha256 = "0r1lqwqgw90q3a3gpr1a29zvn84r5d9id17byrid5nxmld8x5cdz";
       };
 
+      buildInputs = [ pkgs.makeWrapper ];
+
       # I'm assuming anything that needs ct-ng will also need it's dependencies
-      # in order to do anything meaningful since ct-ng is just a bunch of scipts
+      # in order to do anything meaningful since ct-ng is just a bunch of scripts
       propagatedBuildInputs = with pkgs; [
         which gperf bison flex texinfo wget libtool automake ncurses
       ];
 
-      preBuild = ''
-        # We need to invoke the host gcc through nix's gcc-wrapper but
-        # crosstool-ng invokes it manually with the host triple prefixed
-        ${lib.concatMapStrings (a: "substituteInPlace ${a} --replace '\${CT_HOST}-gcc' gcc\n") [
-          "./scripts/crosstool-NG.sh.in"
-        ]}
+      # Clearing CC was required otherwise the target compiler was misidentified
+      # when building the ncurses (dependency of native gdb)
+      # CXX cleared simply because CC was also cleared, although clearing it may
+      # not be required
+      postInstall = ''
+        wrapProgram $out/bin/ct-ng \
+        --prefix PATH : ${crosstool-ng-gcc-wrapper-with-triple}/bin \
+        --set CC "" \
+        --set CXX "" \
+        --set V 2
+      '';
+    };
 
-        # These substitutions don't prevent ct-ng from building but are required
-        # for any builds invoking ct-ng
-        ${lib.concatMapStrings (a: "substituteInPlace ${a} --replace '\${host}-gcc' gcc\n") [
-          "./scripts/build/companion_libs/110-mpfr.sh"
-          "./scripts/build/companion_libs/200-libelf.sh"
-        ]}
+    crosstool-ng-gcc-wrapper-with-triple = mkDerivation {
+      name = "gcc-with-triple-fakey";
+      srcs = [];
+      builder = writeScript "builder.sh" ''
+        source $stdenv/setup
+        mkdir -p $out/bin
+        ln -s $NIX_CC/bin/gcc $out/bin/$(basename $(find ${pkgs.gcc.cc.outPath}/bin -name \*-gcc))
+        ln -s $NIX_CC/bin/g++ $out/bin/$(basename $(find ${pkgs.gcc.cc.outPath}/bin -name \*-g++))
       '';
     };
   };
