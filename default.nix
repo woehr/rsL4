@@ -524,8 +524,6 @@ let
         ct-ng arm-unknown-linux-gnueabi
 
         # Install to the correct output directory
-        #substituteInPlace ./.config --replace CT_INSTALL_DIR=\"$\{CT_PREFIX_DIR\}\" CT_INSTALL_DIR=\"$out\"
-
         substituteInPlace ./.config --replace CT_PREFIX_DIR=\"$\{HOME\}/x-tools/$\{CT_TARGET\}\" CT_PREFIX_DIR=\"$out\"
 
         # This option makes the install directory read-only but nix will take
