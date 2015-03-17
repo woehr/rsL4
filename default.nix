@@ -309,8 +309,6 @@ let
       };
     };
 
-    # Rust ARM hackery to build arm libs with arm-none-eabi toolchain
-
     # See the following
     # https://github.com/neykov/armboot/blob/871cd89a324f81aaa9ad188373d4a13504dc9c10/target.json
     # https://github.com/rust-lang/rust/blob/c9b03c24ec346e6405883032094f47805ef9c43e/src/librustc_back/target/arm_unknown_linux_gnueabi.rs
@@ -337,10 +335,10 @@ let
 
     # Build our target rust version with the arm target for arm libs
     rsl4-rustc-arm-libs = overrideDerivation rustc (old: {
+      name = "rustc-arm-unknown-linux-gnueabi";
       buildInputs = old.buildInputs ++ [ arm-unknown-linux-gnueabi ];
       configureFlags = old.configureFlags ++ [
         "--target=${rsl4-target}"
-#        "--disable-clang"
       ];
     });
 
@@ -486,7 +484,7 @@ let
         pkgs.cloog # gcc
         pkgs.perl  # kernel headers
         pkgs.expat # cross-gdb
-        pkgs.file  # cleanup (executable stripping)
+        pkgs.file  # cleanup (executable stripping step)
       ];
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
@@ -532,6 +530,10 @@ let
 
         # This is unnecessary because we get a clean environment with nix
         substituteInPlace ./.config --replace CT_RM_RF_PREFIX_DIR=y CT_RM_RF_PREFIX_DIR=n
+
+        # I want executables name arm-linux-gnueabi so nothing extra is needed
+        # to compile rustc targetting arm
+        substituteInPlace ./.config --replace CT_TARGET_ALIAS=\"\" CT_TARGET_ALIAS=\"arm-linux-gnueabi\"
 
         # Use a location in the build directory in place of home
         substituteInPlace ./.config --replace $\{HOME\} $\{CT_TOP_DIR\}/dummy-home
