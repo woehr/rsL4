@@ -163,7 +163,7 @@ let
         mkdir ./objs
         ${rsl4-cc} -c $src/rrt.S -o ./objs/rsl4-runtime.o
         cd ./objs
-        ${rsl4-ar} x ${rsl4-rustc-arm-libs}/libcompiler-rt.a
+        ${rsl4-ar} x ${rsl4-rustc-arm}/libcompiler-rt.a
         ${rsl4-ar} rcs $out/libcompiler-rt.a ./objs/*
         cp $src/link.lds $out
       '';
@@ -334,7 +334,7 @@ let
     '';
 
     # Build our target rust version with the arm target for arm libs
-    rsl4-rustc-arm-libs = overrideDerivation rustc (old: {
+    rsl4-rustc-arm = overrideDerivation rustc (old: {
       name = "rustc-arm-unknown-linux-gnueabi";
       buildInputs = old.buildInputs ++ [ arm-unknown-linux-gnueabi ];
       configureFlags = old.configureFlags ++ [
