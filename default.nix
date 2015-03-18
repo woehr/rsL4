@@ -15,7 +15,7 @@ let
   # some kind of other option in the future.
 
   # Rust version
-  rustc = pkgs.rustcAlpha2;
+  rustcVer = pkgs.rustcAlpha2;
   cargo = pkgs.cargoSnapshot;
 
   # Kernel build parametres
@@ -44,7 +44,7 @@ let
   rsl4-target = "arm-unknown-linux-gnueabi";
 
   # The target toolchain for kernel and rsl4 compilation
-  rsl4-toolchain = self.rsl4-arm-linux-gnueabi;
+  rsl4-toolchain = self.arm-unknown-linux-gnueabi;
   tool-prefix = "arm-linux-gnueabi-";
 
   rsl4-cc = "${rsl4-toolchain}/bin/${tool-prefix}gcc";
@@ -59,12 +59,11 @@ let
     "-A non_snake_case"
     "-A non_upper_case_globals"
     # Entry point, executable location, stack space for initial task
-    # -nostdlib,-errt_start
-    "-C link-args=-T${self.rsl4-runtime}/link.lds"
+    "-C link-args=-Wl,-nostdlib,-errt_start,-T${self.rsl4-runtime}/link.lds"
     # location of compiler-rt
     "-L ${self.rsl4-runtime}"
     # location of libcore
-    "-L ${self.rsl4-rustc-arm-libs}/asdf"
+    "-L ${self.rustc-with-arm}/asdf"
     "-Z print-link-args"
   ];
 
@@ -94,7 +93,7 @@ let
     rsl4-init = mkDerivation {
       name = "rsl4-init";
       src = ./rsl4-init;
-      buildInputs = [ rustc ];
+      buildInputs = [ self.rustc-with-arm ];
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
@@ -105,7 +104,7 @@ let
     rsl4-librsl4 = mkDerivation {
       name = "rsl4-librsl4";
       src = ./librsl4;
-      buildInputs = [ rustc ];
+      buildInputs = [ self.rustc-with-arm ];
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
@@ -144,8 +143,8 @@ let
         source $stdenv/setup
         mkdir -p $out/bin
         cp $src/rsL4-genTool $out/bin
-#        cp -r $src/* .
-#        cargo build --verbose
+        #cp -r $src/* .
+        #cargo build --verbose
       '';
     };
 
@@ -163,7 +162,7 @@ let
         mkdir ./objs
         ${rsl4-cc} -c $src/rrt.S -o ./objs/rsl4-runtime.o
         cd ./objs
-        ${rsl4-ar} x ${rsl4-rustc-arm}/libcompiler-rt.a
+        ${rsl4-ar} x ${rustc-with-arm}/libcompiler-rt.a
         ${rsl4-ar} rcs $out/libcompiler-rt.a ./objs/*
         cp $src/link.lds $out
       '';
@@ -242,12 +241,6 @@ let
     };
 
     ##### Sources #####
-
-    rsl4-rust-src = srcOnly {
-      inherit stdenv;
-      name = "rsl4-rust-src";
-      src = rustc.src;
-    };
 
     rsl4-sel4-src = srcOnly {
       inherit stdenv;
@@ -334,12 +327,13 @@ let
     '';
 
     # Build our target rust version with the arm target for arm libs
-    rsl4-rustc-arm = overrideDerivation rustc (old: {
-      name = "rustc-arm-unknown-linux-gnueabi";
+    rustc-with-arm = overrideDerivation rustcVer (old: {
+      name = "rsl4-rustc-with-arm-unknown-linux-gnueabi";
       buildInputs = old.buildInputs ++ [ arm-unknown-linux-gnueabi ];
       configureFlags = old.configureFlags ++ [
         "--target=${rsl4-target}"
       ];
+      doCheck = false;
     });
 
     arm-unknown-linux-gnueabi = mkDerivation {
@@ -378,10 +372,10 @@ let
         })
         (fetchurl {
           urls = [
-            http://www.bastoul.net/cloog/pages/download/cloog-0.18.1.tar.bz2
-            ftp://gcc.gnu.org/pub/gcc/infrastructure/cloog-0.18.1.tar.bz2
+            http://www.bastoul.net/cloog/pages/download/cloog-0.18.1.tar.gz
+            ftp://gcc.gnu.org/pub/gcc/infrastructure/cloog-0.18.1.tar.gz
           ];
-          sha256 = "1d0zs64yw6fzs6b7kxq6nh9kvas16h8b43agwh30118jjzpdpczl";
+          sha256 = "15j19gb078vmbpvwcx143h6cn98456jfvjw4zsa5z1qlvm70ll02";
         })
         (fetchurl {
           urls = [
@@ -497,24 +491,25 @@ let
         # Where extracted sources go so we can patch what we need to
         mkdir -p ./.build/src
 
+        pushd ./.build/src
+
         # Copy in sources
-        for s in $srcs
-        do
-          # Get rid of checksum in filename when copying
-          d=./.build/tarballs/$(basename $s | cut -d- -f2-)
-          cp $s $d
+        for s in $srcs; do
+          tarName=$(basename $s | cut -d- -f2-)
+          cp $s ./$tarName
+          unpackFile ./$tarName
+          mv ./$tarName ../tarballs/$tarName
         done
 
-        # We have to patch some sources which is annoying because ct-ng would
-        # otherwise take care of extracting everything for us
-        tar -xf ./.build/tarballs/linux-3.15.4.tar.xz -C ./.build/src
-        tar -xf ./.build/tarballs/glibc-2.19.tar.xz -C ./.build/src
+        # Mark source directories as extracted
+        for d in ./*; do
+          touch ./.$(basename $d).extracted
+        done
 
-        # Indicate to ct-ng that the tarball is already extracted
-        touch ./.build/src/.linux-3.15.4.extracted
-        touch ./.build/src/.glibc-2.19.extracted
+        # Done in .build/src
+        popd
 
-        # Do the our patching (perhaps this should be applied to all Makefiles
+        # Do our patching (perhaps this should be applied to all Makefiles
         # and configure scripts?)
         substituteInPlace ./.build/src/linux-3.15.4/Makefile --replace /bin/pwd pwd
         substituteInPlace ./.build/src/glibc-2.19/configure --replace /bin/pwd pwd
@@ -565,8 +560,7 @@ let
         wrapProgram $out/bin/ct-ng \
         --prefix PATH : ${crosstool-ng-gcc-wrapper-with-triple}/bin \
         --set CC "" \
-        --set CXX "" \
-        --set V 2
+        --set CXX ""
       '';
     };
 
