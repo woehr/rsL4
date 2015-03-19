@@ -53,17 +53,25 @@ let
 
   rsl4-rust-flags = foldSpace [
     "--verbose"
-    "--target ${self.rsl4-target-json}/target.json"
+    "--target arm-unknown-linux-gnueabi"
     "-A dead_code"
     "-A non_camel_case_types"
     "-A non_snake_case"
     "-A non_upper_case_globals"
+
     # Entry point, executable location, stack space for initial task
     "-C link-args=-Wl,-nostdlib,-errt_start,-T${self.rsl4-runtime}/link.lds"
-    # location of compiler-rt
-    "-L ${self.rsl4-runtime}"
-    # location of libcore
-    "-L ${self.rustc-with-arm}/asdf"
+
+    # location of compiler-rt 
+    #"-L ${self.rsl4-runtime}"
+    # location of arm libs
+    "-L ${self.rustc-with-arm}/lib/rustlib/arm-unknown-linux-gnueabi/lib"
+    "-C linker=${tool-prefix}gcc"
+    "-C target-cpu=${rsl4-cpu}"
+    "-C relocation-model=static"
+    "-C no-stack-check"
+    "-C no-redzone"
+
     "-Z print-link-args"
   ];
 
@@ -159,11 +167,10 @@ let
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        mkdir ./objs
-        ${rsl4-cc} -c $src/rrt.S -o ./objs/rsl4-runtime.o
-        cd ./objs
-        ${rsl4-ar} x ${rustc-with-arm}/libcompiler-rt.a
-        ${rsl4-ar} rcs $out/libcompiler-rt.a ./objs/*
+        ${rsl4-cc} -c $src/rrt.S -o ./rsl4-runtime.o
+        cp ${rustc-with-arm}/lib/rustlib/arm-unknown-linux-gnueabi/lib/libcompiler-rt.a $out
+        chmod 700 $out/libcompiler-rt.a
+        ${rsl4-ar} r $out/libcompiler-rt.a ./rsl4-runtime.o
         cp $src/link.lds $out
       '';
     };
@@ -302,34 +309,10 @@ let
       };
     };
 
-    # See the following
-    # https://github.com/neykov/armboot/blob/871cd89a324f81aaa9ad188373d4a13504dc9c10/target.json
-    # https://github.com/rust-lang/rust/blob/c9b03c24ec346e6405883032094f47805ef9c43e/src/librustc_back/target/arm_unknown_linux_gnueabi.rs
-    rsl4-target-json = writeText "target.json" ''
-      {
-      "data-layout": "e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:64:128-a:0:64-n32",
-      "llvm-target": "${rsl4-target}",
-      "linker": "${tool-prefix}gcc",
-      "target-endian": "little",
-      "target-pointer-width": "32",
-      "arch": "${rsl4-arch}",
-      "os": "none",
-      "cpu": "${rsl4-cpu}",
-      "features": "+v6",
-      "relocation-model": "static",
-      "linker-is-gnu": true,
-      "has-rpath": true,
-      "morestack": false,
-      "disable-redzone": true,
-      "executables": true,
-      "dynamic_linking": false
-      }
-    '';
-
     # Build our target rust version with the arm target for arm libs
     rustc-with-arm = overrideDerivation rustcVer (old: {
       name = "rsl4-rustc-with-arm-unknown-linux-gnueabi";
-      buildInputs = old.buildInputs ++ [ arm-unknown-linux-gnueabi ];
+      propagatedBuildInputs = old.propagatedBuildInputs ++ [ arm-unknown-linux-gnueabi ];
       configureFlags = old.configureFlags ++ [
         "--target=${rsl4-target}"
       ];
