@@ -1,14 +1,13 @@
 { pkgs ? import <nixpkgs> {}
 }:
 let
-  stdenv = pkgs.stdenv;
+  inherit (pkgs) lib fetchgit fetchurl srcOnly stdenv writeScript writeText;
+  inherit (stdenv) mkDerivation;
+  inherit (stdenv.lib) overrideDerivation;
+
 
   callPackage = pkgs.lib.callPackageWith (pkgs // self);
   foldSpace = pkgs.lib.concatStringsSep " ";
-
-  inherit (pkgs) lib fetchgit fetchurl srcOnly writeScript writeText;
-  inherit (stdenv) mkDerivation;
-  inherit (stdenv.lib) overrideDerivation;
 
   ############ Modifiable parametres ############
   # It would make more sense for these parameters to be function arguments or
@@ -457,7 +456,7 @@ let
         })
       ];
       buildInputs = [
-        crosstool-ng
+        pkgs.crosstool-ng
         pkgs.cloog # gcc
         pkgs.perl  # kernel headers
         pkgs.expat # cross-gdb
@@ -519,45 +518,6 @@ let
         ct-ng build
       '';
     };
-
-    crosstool-ng = let crosstool-ng-version = "1.20.0"; in mkDerivation {
-      name = "crosstool-ng";
-      src = fetchurl {
-        url = "http://crosstool-ng.org/download/crosstool-ng/crosstool-ng-${crosstool-ng-version}.tar.bz2";
-        sha256 = "0r1lqwqgw90q3a3gpr1a29zvn84r5d9id17byrid5nxmld8x5cdz";
-      };
-
-      buildInputs = [ pkgs.makeWrapper ];
-
-      # I'm assuming anything that needs ct-ng will also need it's dependencies
-      # in order to do anything meaningful since ct-ng is just a bunch of scripts
-      propagatedBuildInputs = with pkgs; [
-        which gperf bison flex texinfo wget libtool automake ncurses
-      ];
-
-      # Clearing CC was required otherwise the target compiler was misidentified
-      # when building the ncurses (dependency of native gdb)
-      # CXX cleared simply because CC was also cleared, although clearing it may
-      # not be required
-      postInstall = ''
-        wrapProgram $out/bin/ct-ng \
-        --prefix PATH : ${crosstool-ng-gcc-wrapper-with-triple}/bin \
-        --set CC "" \
-        --set CXX ""
-      '';
-    };
-
-    crosstool-ng-gcc-wrapper-with-triple = mkDerivation {
-      name = "gcc-with-triple-fakey";
-      srcs = [];
-      builder = writeScript "builder.sh" ''
-        source $stdenv/setup
-        mkdir -p $out/bin
-        ln -s $NIX_CC/bin/gcc $out/bin/$(basename $(find ${pkgs.gcc.cc.outPath}/bin -name \*-gcc))
-        ln -s $NIX_CC/bin/g++ $out/bin/$(basename $(find ${pkgs.gcc.cc.outPath}/bin -name \*-g++))
-      '';
-    };
   };
 in
   self
-
