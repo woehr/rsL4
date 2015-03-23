@@ -44,7 +44,7 @@ let
 
   # The target toolchain for kernel and rsl4 compilation
   rsl4-toolchain = pkgs.gcc-armv7l-unknown-linux-gnueabihf;
-  tool-prefix = "armv7l-unknown-linux-gnueabi-";
+  tool-prefix = rsl4-toolchain.prefix + "-";
 
   rsl4-cc = "${rsl4-toolchain}/bin/${tool-prefix}gcc";
   rsl4-ar = "${rsl4-toolchain}/bin/${tool-prefix}ar";
@@ -52,7 +52,7 @@ let
 
   rsl4-rust-flags = foldSpace [
     "--verbose"
-    "--target arm-unknown-linux-gnueabi"
+    "--target arm-unknown-linux-gnueabihf"
     "-A dead_code"
     "-A non_camel_case_types"
     "-A non_snake_case"
@@ -64,7 +64,7 @@ let
     # location of compiler-rt 
     #"-L ${self.rsl4-runtime}"
     # location of arm libs
-    "-L ${self.rustc-with-arm}/lib/rustlib/arm-unknown-linux-gnueabi/lib"
+    "-L ${self.rustc-with-arm}/lib/rustlib/arm-unknown-linux-gnueabihf/lib"
     "-C linker=${tool-prefix}gcc"
     "-C target-cpu=${rsl4-cpu}"
     "-C relocation-model=static"
@@ -100,7 +100,7 @@ let
     rsl4-init = mkDerivation {
       name = "rsl4-init";
       src = ./rsl4-init;
-      buildInputs = [ self.rustc-with-arm ];
+      buildInputs = [ rustc-with-arm rsl4-toolchain ];
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
@@ -111,7 +111,7 @@ let
     rsl4-librsl4 = mkDerivation {
       name = "rsl4-librsl4";
       src = ./librsl4;
-      buildInputs = [ self.rustc-with-arm ];
+      buildInputs = [ rustc-with-arm rsl4-toolchain ];
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
@@ -167,7 +167,7 @@ let
         source $stdenv/setup
         mkdir -p $out
         ${rsl4-cc} -c $src/rrt.S -o ./rsl4-runtime.o
-        cp ${rustc-with-arm}/lib/rustlib/arm-unknown-linux-gnueabi/lib/libcompiler-rt.a $out
+        cp ${rustc-with-arm}/lib/rustlib/arm-unknown-linux-gnueabihf/lib/libcompiler-rt.a $out
         chmod 700 $out/libcompiler-rt.a
         ${rsl4-ar} r $out/libcompiler-rt.a ./rsl4-runtime.o
         cp $src/link.lds $out
@@ -309,25 +309,31 @@ let
     };
 
     # Build our target rust version with the arm target for arm libs
-    rustc-with-arm = overrideDerivation rustcVer (old: {
-      name = "rsl4-rustc-with-arm-unknown-linux-gnueabi";
-      propagatedBuildInputs = old.propagatedBuildInputs ++ [ rsl4-toolchain ];
-      configureFlags = old.configureFlags ++ [
+    rustc-with-arm = overrideDerivation rustcVer (origAttrs: {
+      name = "rustc-with-arm";
+      src = rustc-src-armv7-compiler;
+      buildInputs = origAttrs.buildInputs ++ [ rsl4-toolchain ];
+      configureFlags = origAttrs.configureFlags ++ [
         "--target=${rsl4-target}"
       ];
       doCheck = false;
     });
 
-    /*
-            http://www.mr511.de/software/libelf-0.8.13.tar.gz
-            http://dmalloc.com/releases/dmalloc-5.5.2.tgz
-            http://downloads.sourceforge.net/project/duma/duma/2.5.15/duma_2_5_15.tar.gz
-            ftp://ftp.gnu.org/pub/gnu/gdb/gdb-7.8.tar.xz
-            ftp://ftp.gnu.org/pub/gnu/ncurses/ncurses-5.9.tar.gz
-            http://downloads.sourceforge.net/project/expat/expat/2.1.0/expat-2.1.0.tar.gz
-            ftp://ftp.de.debian.org/debian/pool/main/l/ltrace/ltrace_0.7.3.orig.tar.bz2
-            http://downloads.sourceforge.net/project/strace/strace/4.8/strace-4.8.tar.xz
-    */
+    rustc-src-armv7-compiler = overrideDerivation
+      (srcOnly {
+        inherit stdenv;
+        name = "rsl4-rustc-src";
+        src = rustcVer.src;
+      })
+      (origAttr: {
+        name = "rustc-src-armv7-compiler";
+        patchPhase = ''
+          substituteInPlace ./mk/cfg/arm-unknown-linux-gnueabihf.mk \
+            --replace \
+            CROSS_PREFIX_arm-unknown-linux-gnueabihf=arm-linux-gnueabihf- \
+            CROSS_PREFIX_arm-unknown-linux-gnueabihf=${tool-prefix}
+        '';
+      });
   };
 in
   self
