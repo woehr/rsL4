@@ -40,6 +40,7 @@ let
                else throw "Unsupported sel4-platform";
 
   # Can also be determined from the sel4-platform
+  # Name must match what rustc configuration expects
   rsl4-target = "arm-unknown-linux-gnueabihf";
 
   # The target toolchain for kernel and rsl4 compilation
@@ -52,7 +53,7 @@ let
 
   rsl4-rust-flags = foldSpace [
     "--verbose"
-    "--target arm-unknown-linux-gnueabihf"
+    "--target ${rsl4-target}"
     "-A dead_code"
     "-A non_camel_case_types"
     "-A non_snake_case"
@@ -64,10 +65,10 @@ let
     # location of compiler-rt 
     #"-L ${self.rsl4-runtime}"
     # location of arm libs
-    "-L ${self.rustc-with-arm}/lib/rustlib/arm-unknown-linux-gnueabihf/lib"
+    #"-L ${self.rustc-with-arm}/lib/rustlib/${rsl4-target}/lib"
     "-C linker=${tool-prefix}gcc"
     "-C target-cpu=${rsl4-cpu}"
-    "-C relocation-model=static"
+    #"-C relocation-model=static"
     "-C no-stack-check"
     "-C no-redzone"
 
@@ -84,7 +85,7 @@ let
                
                "${rsl4-sel4}/build/kernel/kernel.elf"
                "${rsl4-sel4}/build/arm/${sel4-platform}/elfloader/elfloader.o"
-               "${rsl4-init}/rsl4-init.elf"
+               "${rsl4-init}/rsl4-init"
              ];
       buildInputs = [ rsl4-toolchain rsl4-cpio-strip pkgs.cpio pkgs.which ];
       builder = writeScript "builder.sh" ''
@@ -92,7 +93,7 @@ let
         mkdir -p $out
         cp $srcs .
         substituteInPlace ./gen_boot_image.sh --replace /bin/bash $SHELL
-        PLAT=${sel4-platform} TOOLPREFIX=${tool-prefix} ./gen_boot_image.sh ./kernel.elf ./rsl4-init.elf $out/rsl4-boot.elf
+        PLAT=${sel4-platform} TOOLPREFIX=${tool-prefix} ./gen_boot_image.sh ./kernel.elf ./rsl4-init $out/rsl4-boot.elf
         ${rsl4-objcopy} -O binary $out/rsl4-boot.elf $out/rsl4-boot.bin
       '';
     };
@@ -104,7 +105,7 @@ let
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
         mkdir -p $out
-        rustc --crate-type bin ${rsl4-rust-flags} -L ${rsl4-librsl4} --emit asm,llvm-ir,link --out-dir $out $src/main.rs -o rsl4-init.elf
+        rustc --crate-type bin ${rsl4-rust-flags} -L ${rsl4-librsl4} --emit asm,llvm-ir,link $src/main.rs --out-dir $out
       '';
     };
 
@@ -204,7 +205,7 @@ let
         pkgs.clang                    # for clang-format
         pkgs.moreutils                # for sponge
       ];
-      
+
       builder = writeScript "builder.sh" ''
         source $stdenv/setup
 
@@ -221,11 +222,14 @@ let
         cp -r ${rsl4-kbuild-src} ./tools/kbuild
         cp -r ${rsl4-elfloader-src} ./tools/elfloader
 
-        # Now copy the custom configs and makefile for rsl4
+        # Now copy the custom build files for rsl4
         cp $src/Makefile .
         cp $src/Kbuild .
         cp $src/Kconfig .
-        cp -r $src/configs .
+
+        # and the generated config
+        mkdir ./configs
+        cp ${rsl4-sel4-config} ./configs/${rsl4-sel4-config.name}
 
         # permissions are read-only from the nix store
         chmod -R +w ./*
@@ -237,13 +241,21 @@ let
         substituteInPlace ./kernel/tools/changed.sh --replace /bin/bash $SHELL
 
         # Do the build
-        make bbb_defconfig
+        make ${rsl4-sel4-config.name}
         make
 
         # Copy outputs
         mkdir -p $out
         cp -r ./build $out
       '';
+    };
+
+    # seL4 config. Doesn't do anything fancy except set the correct toolchian
+    # prefix currently. In the future, generate an appropriate config file from
+    # the options given by the user
+    rsl4-sel4-config = import ./nix/rsl4_defconfig.nix {
+      inherit pkgs;
+      inherit tool-prefix;
     };
 
     ##### Sources #####
@@ -316,7 +328,10 @@ let
       configureFlags = origAttrs.configureFlags ++ [
         "--target=${rsl4-target}"
       ];
+      # arm libraries fail
       doCheck = false;
+      # remove information from arm libraries causing linker errors
+      dontStrip = true;
     });
 
     rustc-src-armv7-compiler = overrideDerivation

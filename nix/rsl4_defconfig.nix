@@ -1,3 +1,5 @@
+{ pkgs, tool-prefix }:
+pkgs.writeTextFile { name = "rsl4_defconfig"; text = ''
 #
 # seL4 Kernel
 #
@@ -81,7 +83,7 @@ CONFIG_LIB_ELFLOADER=y
 #
 # Toolchain Options
 #
-CONFIG_CROSS_COMPILER_PREFIX="arm-linux-gnueabi-"
+CONFIG_CROSS_COMPILER_PREFIX="${tool-prefix}"
 CONFIG_KERNEL_COMPILER=""
 CONFIG_KERNEL_CFLAGS=""
 CONFIG_KERNEL_EXTRA_CPPFLAGS=""
@@ -100,4 +102,4 @@ CONFIG_USER_OPTIMISATION_O2=y
 # CONFIG_WHOLE_PROGRAM_OPTIMISATIONS_KERNEL is not set
 CONFIG_USER_DEBUG_BUILD=y
 # CONFIG_BUILDSYS_CPP_SEPARATE is not set
-
+'';}
