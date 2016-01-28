@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # This is the version of nixpkgs that introduces an easier way of creating
 # rustc derivations.
